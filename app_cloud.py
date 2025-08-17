@@ -17,12 +17,18 @@ from typing import Dict, Any, Optional
 import ibm_boto3
 from ibm_botocore.client import Config
 from ibm_botocore.exceptions import ClientError
+from dotenv import load_dotenv
 
 
 class COSEventProcessorCloud:
     """Processes COS bucket events using IAM authentication for cloud deployment"""
 
     def __init__(self):
+        # Load environment variables from .env.cloud for local testing
+        # In Code Engine, environment variables are set directly
+        if not os.getenv("CE_JOB"):  # If not running in Code Engine
+            load_dotenv(".env.cloud")
+
         self.logger = self._setup_logger()
         self._validate_environment()
         self._setup_cos_client()
