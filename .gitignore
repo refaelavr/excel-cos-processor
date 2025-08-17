@@ -1,0 +1,76 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.cloud
+.env.production
+.env.staging
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs and runtime data
+logs/
+*.log
+*.log.*
+
+# Test files and sample data
+test_files/
+sample_data/
+test_excel/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Coverage reports
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Docker
+.dockerignore
+
+# Local development
+local_test/.env.cloud
