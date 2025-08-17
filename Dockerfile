@@ -20,8 +20,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy only cloud-specific code
 COPY app_cloud.py .
-COPY sample_excel_file.xlsx .
-
 # Create logs directory
 RUN mkdir -p logs
 
