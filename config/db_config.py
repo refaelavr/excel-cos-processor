@@ -1,10 +1,25 @@
-# Database connection configuration
+"""
+Database connection configuration (environment-driven)
+
+This module defines DB_CONFIG but reads all values from environment variables.
+It intentionally contains no secrets and is safe to commit.
+
+Expected environment variables:
+- DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+- DB_SSLMODE (default: verify-full)
+- DB_SSLROOTCERT (default: config/ibm-cloud-cert.crt)
+"""
+
+import os
+
+
 DB_CONFIG = {
-    "host": "1d6f9d38-d61f-4764-b60d-db1efdef17ac.659dc287bad647f9b4fe17c4e4c38dcc.databases.appdomain.cloud",
-    "port": 31863,
-    "database": "ibmclouddb",
-    "user": "ibm_cloud_9c49b5ec_c6b9_4f99_9c14_490388046c36",
-    "password": "7VyANRR4lq16juv0eBNfJaUlZhc1Pl2N",
-    "sslmode": "verify-full",
-    "sslrootcert": "ibm-cloud-cert.crt",
+    "host": os.getenv("DB_HOST", ""),
+    "port": int(os.getenv("DB_PORT", "31863")),
+    "database": os.getenv("DB_NAME", ""),
+    "user": os.getenv("DB_USER", ""),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "sslmode": os.getenv("DB_SSLMODE", "verify-full"),
+    # Keep relative; callers normalize to absolute project path when needed
+    "sslrootcert": os.getenv("DB_SSLROOTCERT", "config/ibm-cloud-cert.crt"),
 }
