@@ -18,8 +18,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy only cloud-specific code
+# Copy application code
 COPY app_cloud.py .
+COPY src/ ./src
+COPY config/ ./config
 # Create logs directory
 RUN mkdir -p logs
 
