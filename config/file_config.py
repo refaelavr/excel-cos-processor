@@ -437,7 +437,7 @@ FILE_CONFIG = {
         },
     },
     "מהירות מסחרית הסכם משרד התחבורה": {
-        "Sheet1": {  # Sheet name
+        'מהירות מסחרית הסכם משה"ת': {  # Sheet name
             "key_values": [],
             "tables": [],  # Add col_count value if 2 tables are next to each other
             "no_title_tables": [
@@ -460,6 +460,29 @@ FILE_CONFIG = {
                             "format": "%d/%m/%Y",
                             "placement": "all_rows",
                         },
+                    ],
+                }
+            ],
+        },
+        "מהירות מסחרית ברמת קו": {
+            "key_values": [],
+            "tables": [],
+            "no_title_tables": [
+                {
+                    "title": "commercial_speed_by_line",
+                    "start_row": 5,  # Row 6 in Excel (0-based),
+                    "export_to_db": True,
+                    "table_name": "commercial_speed_by_line",
+                    "primary_keys": ["date", "line", "direction"],
+                    "add_keys": False,
+                    "headers": [
+                        "date",
+                        "day",
+                        "line",
+                        "direction",
+                        "alternative",
+                        "slot",
+                        "speed",
                     ],
                 }
             ],
