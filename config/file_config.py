@@ -473,7 +473,7 @@ FILE_CONFIG = {
                     "start_row": 5,  # Row 6 in Excel (0-based),
                     "export_to_db": True,
                     "table_name": "commercial_speed_by_line",
-                    "primary_keys": ["date", "line", "direction"],
+                    "primary_keys": ["date", "line", "direction", "slot"],
                     "add_keys": False,
                     "headers": [
                         "date",
