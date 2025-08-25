@@ -694,12 +694,43 @@ class COSExcelProcessorComplete:
             str: The filename that triggered the event, or None if not found
         """
         try:
-            # Read trigger event data from stdin
+            # Method 1: Check for trigger event data in environment variables
+            # IBM Cloud Code Engine might pass trigger data as environment variables
+            trigger_env_vars = [
+                "CE_TRIGGER_PAYLOAD",
+                "COS_EVENT_DATA",
+                "TRIGGER_PAYLOAD",
+                "CE_EVENT_DATA",
+            ]
+
+            for var in trigger_env_vars:
+                value = os.getenv(var)
+                if value:
+                    self.logger.info(
+                        f"Found trigger data in environment variable {var}: {value[:200]}..."
+                    )
+                    try:
+                        event_json = json.loads(value)
+                        if "Records" in event_json:
+                            for record in event_json["Records"]:
+                                if "s3" in record and "object" in record["s3"]:
+                                    key = record["s3"]["object"].get("key", "")
+                                    if key and not key.startswith("archive/"):
+                                        filename = os.path.basename(key)
+                                        self.logger.info(
+                                            f"Extracted filename from {var}: {filename} (full path: {key})"
+                                        )
+                                        return key
+                    except json.JSONDecodeError:
+                        self.logger.warning(f"Invalid JSON in {var}")
+                        continue
+
+            # Method 2: Read trigger event data from stdin
             if not sys.stdin.isatty():
                 event_data = sys.stdin.read().strip()
                 if event_data:
                     self.logger.info(
-                        f"Received trigger event data: {event_data[:200]}..."
+                        f"Received trigger event data from stdin: {event_data[:200]}..."
                     )
 
                     # Parse JSON event data
@@ -711,67 +742,67 @@ class COSExcelProcessorComplete:
                                 if key and not key.startswith("archive/"):
                                     filename = os.path.basename(key)
                                     self.logger.info(
-                                        f"Extracted filename from trigger: {filename} (full path: {key})"
+                                        f"Extracted filename from stdin trigger: {filename} (full path: {key})"
                                     )
                                     return key
                     else:
-                        self.logger.warning("No 'Records' found in trigger event data")
+                        self.logger.warning(
+                            "No 'Records' found in stdin trigger event data"
+                        )
                 else:
-                    self.logger.warning("No trigger event data received from stdin")
+                    self.logger.warning("stdin is available but empty")
             else:
-                self.logger.warning(
-                    "No stdin data available (not running from trigger)"
+                self.logger.warning("stdin is not available (not running from trigger)")
+
+            # Method 3: Check for direct filename in environment variables
+            # Some triggers might pass the filename directly
+            filename_vars = [
+                "TRIGGER_FILENAME",
+                "COS_FILENAME",
+                "CE_FILENAME",
+                "OBJECT_KEY",
+            ]
+
+            for var in filename_vars:
+                value = os.getenv(var)
+                if value:
+                    if not value.startswith("archive/") and self._is_excel_file(value):
+                        self.logger.info(f"Found filename in {var}: {value}")
+                        return value
+
+            # Method 4: Debug - log all environment variables to understand what's available
+            self.logger.info("Debug: All environment variables for trigger detection:")
+            trigger_related_vars = [
+                var
+                for var in os.environ.keys()
+                if any(
+                    keyword in var.upper()
+                    for keyword in ["TRIGGER", "COS", "S3", "EVENT", "OBJECT", "CE_"]
                 )
+            ]
 
-            # Fallback: Try to find the most recently uploaded file
-            if self.environment == "prod" and self.cos_client:
-                try:
-                    self.logger.info(
-                        "Fallback: Searching for most recently uploaded file..."
+            for var in trigger_related_vars:
+                value = os.environ[var]
+                # Mask sensitive values
+                if "KEY" in var.upper() or "SECRET" in var.upper():
+                    masked_value = (
+                        f"{value[:8]}...{value[-4:]}" if len(value) > 12 else "***"
                     )
+                    self.logger.info(f"  {var}: {masked_value}")
+                else:
+                    self.logger.info(f"  {var}: {value}")
 
-                    response = self.cos_client.list_objects_v2(Bucket=self.bucket_name)
-
-                    if "Contents" in response:
-                        # Filter out archive files and find the most recent Excel file
-                        excel_files = []
-                        for obj in response["Contents"]:
-                            key = obj["Key"]
-                            if not key.startswith("archive/") and self._is_excel_file(
-                                key
-                            ):
-                                excel_files.append(
-                                    {
-                                        "key": key,
-                                        "last_modified": obj["LastModified"],
-                                        "size": obj["Size"],
-                                    }
-                                )
-
-                        if excel_files:
-                            # Sort by last modified time (most recent first)
-                            excel_files.sort(
-                                key=lambda x: x["last_modified"], reverse=True
-                            )
-                            most_recent = excel_files[0]
-                            # Return the full key (path) instead of just filename
-                            full_key = most_recent["key"]
-                            filename = os.path.basename(full_key)
-
-                            self.logger.info(
-                                f"Fallback: Found most recent file: {filename} "
-                                f"(full path: {full_key}, modified: {most_recent['last_modified']})"
-                            )
-                            return full_key
-                        else:
-                            self.logger.info("Fallback: No Excel files found in bucket")
-                    else:
-                        self.logger.info("Fallback: Bucket is empty")
-
-                except Exception as e:
-                    self.logger.warning(f"Fallback method failed: {str(e)}")
-
-            self.logger.warning("Could not extract filename from trigger event")
+            # CRITICAL: Don't use fallback for simultaneous uploads
+            # This could cause race conditions where multiple jobs process the same file
+            self.logger.error(
+                "CRITICAL: Could not extract filename from trigger event data"
+            )
+            self.logger.error(
+                "This could cause race conditions with simultaneous file uploads"
+            )
+            self.logger.error(
+                "Please check IBM Cloud Code Engine trigger configuration"
+            )
             return None
 
         except json.JSONDecodeError as e:
