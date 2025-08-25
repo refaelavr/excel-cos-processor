@@ -9,7 +9,7 @@ from psycopg2.extras import execute_values
 import os
 import numpy as np
 from datetime import datetime
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
 
 # Import from same directory (src/)
 from logger import print_success, print_error, print_warning, print_normal
