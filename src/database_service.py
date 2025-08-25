@@ -685,10 +685,13 @@ class DatabaseService:
                     log_file_name = %s,
                     processing_end_time = %s,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE file_name = %s 
-                AND status = 'processing'
-                ORDER BY created_at DESC 
-                LIMIT 1
+                WHERE id = (
+                    SELECT id FROM file_processing_status 
+                    WHERE file_name = %s 
+                    AND status = 'processing'
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                )
             """
 
             cursor.execute(
