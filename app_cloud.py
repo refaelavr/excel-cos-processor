@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Complete COS Excel Processor for IBM Code Engine
+COS Excel Processor for IBM Code Engine - Trigger-Based Single File Processing
 
-Excel data processing pipeline with dual-mode operation:
-- Single-file mode: Process specific file from trigger event
-- Batch mode: Process all files in source location
+Processes the specific Excel file that triggered the Code Engine job.
+Each trigger processes exactly one file - no batch processing.
 
 Environment-based file source selection:
 - ENVIRONMENT=test: Process files from data/input/ directory (local development)
-- ENVIRONMENT=prod: Process files from COS bucket (production deployment)
+- ENVIRONMENT=prod: Process specific file from COS bucket (production deployment)
 
-Uses IAM authentication for secure cloud-to-cloud communication.
+Usage:
+- Production (trigger): Automatically receives filename from COS event
+- Local testing: python app_cloud.py "test_file.xlsx"
 """
 
 import os
@@ -22,7 +23,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 import ibm_boto3
 from ibm_botocore.client import Config
@@ -115,12 +116,12 @@ except ImportError as e:
     raise
 
 
-class COSExcelProcessorComplete:
+class COSExcelProcessor:
     """
-    Complete Excel processor with single-file and batch processing capabilities.
+    Single-file Excel processor for trigger-based processing.
 
-    Supports environment-based file source selection and trigger-based processing
-    for optimal cloud deployment patterns.
+    Each instance processes exactly one file that triggered the Code Engine job.
+    No batch processing - optimized for cloud event-driven architecture.
     """
 
     def __init__(self):
@@ -136,7 +137,6 @@ class COSExcelProcessorComplete:
                     print(f"Loaded environment from: {env_file}")
                     break
 
-        self.log_messages = []
         self.logger = self._setup_logger()
 
         # Determine environment mode
@@ -177,7 +177,7 @@ class COSExcelProcessorComplete:
 
             date_part = self.run_start_time.strftime("%Y%m%d")
             ts_part = self.run_start_time.strftime("%Y%m%d_%H%M%S")
-            object_key = f"logs/{date_part}/excel_proccessor_{ts_part}.log"
+            object_key = f"logs/{date_part}/excel_processor_{ts_part}.log"
 
             self.cos_client.put_object(
                 Bucket=self.bucket_name,
@@ -185,7 +185,7 @@ class COSExcelProcessorComplete:
                 Body=log_text.encode("utf-8"),
                 ContentType="text/plain; charset=utf-8",
             )
-            self.logger.info(f"Uploaded run logs to '{object_key}'")
+            self.logger.info(f"Uploaded processing logs to '{object_key}'")
         except Exception as e:
             try:
                 self.logger.error(f"Failed to upload logs to COS: {str(e)}")
@@ -350,7 +350,7 @@ class COSExcelProcessorComplete:
             log_dir = Path("logs") / today
             log_dir.mkdir(parents=True, exist_ok=True)
 
-            log_file = log_dir / "complete_excel_processor.log"
+            log_file = log_dir / "excel_processor.log"
 
             # File handler - append mode for daily logs
             file_handler = logging.FileHandler(
@@ -414,7 +414,7 @@ class COSExcelProcessorComplete:
     def _setup_temp_processing_directory(self):
         """Setup temporary directory structure for Excel processing."""
         try:
-            self.temp_dir = tempfile.mkdtemp(prefix="cos_excel_processor_")
+            self.temp_dir = tempfile.mkdtemp(prefix="excel_processor_")
 
             directories = {
                 "input_dir": os.path.join(self.temp_dir, "input"),
@@ -454,178 +454,8 @@ class COSExcelProcessorComplete:
             except Exception as e:
                 self.logger.warning(f"Error cleaning up temp directory: {str(e)}")
 
-    def _get_local_excel_files(self) -> List[str]:
-        """Get Excel files from local data/input/ directory for TEST mode."""
-        try:
-            abs_paths = self.config.processing.get_absolute_paths()
-            input_dir = abs_paths["input_dir"]
-
-            self.logger.info(
-                f"Scanning local directory '{input_dir}' for Excel files..."
-            )
-
-            if not os.path.exists(input_dir):
-                os.makedirs(input_dir)
-                self.logger.info(f"Created input directory: {input_dir}")
-                return []
-
-            excel_files = []
-            for filename in os.listdir(input_dir):
-                if self._is_excel_file(filename):
-                    file_path = os.path.join(input_dir, filename)
-                    excel_files.append(file_path)
-
-            self.logger.info(f"Found {len(excel_files)} Excel files in local directory")
-            for file_path in excel_files:
-                file_size = os.path.getsize(file_path)
-                self.logger.info(
-                    f"  - {os.path.basename(file_path)} ({self._format_file_size(file_size)})"
-                )
-
-            return excel_files
-
-        except Exception as e:
-            self.logger.error(f"Error scanning local directory: {str(e)}")
-            return []
-
-    def _download_excel_files_from_cos(self, input_dir: str) -> List[str]:
-        """Download all Excel files from COS bucket to local input directory."""
-        try:
-            self.logger.info(
-                f"Scanning COS bucket '{self.bucket_name}' for Excel files..."
-            )
-
-            response = self.cos_client.list_objects_v2(Bucket=self.bucket_name)
-
-            if "Contents" not in response:
-                self.logger.info("Bucket is empty")
-                return []
-
-            # Filter Excel files (exclude anything under archive/)
-            excel_files = []
-            for obj in response["Contents"]:
-                key = obj["Key"]
-                if key.startswith("archive/"):
-                    continue
-                if self._is_excel_file(key):
-                    excel_files.append(key)
-
-            self.logger.info(f"Found {len(excel_files)} Excel files in bucket")
-
-            # Download each Excel file
-            downloaded_files = []
-            for object_key in excel_files:
-                try:
-                    metadata = self._get_file_metadata(object_key)
-                    if metadata:
-                        file_size = self._format_file_size(metadata["size"])
-                        self.logger.info(f"Processing: {object_key} ({file_size})")
-
-                    local_filename = os.path.basename(object_key)
-                    local_path = os.path.join(input_dir, local_filename)
-
-                    self.cos_client.download_file(
-                        Bucket=self.bucket_name, Key=object_key, Filename=local_path
-                    )
-
-                    if os.path.exists(local_path):
-                        actual_size = os.path.getsize(local_path)
-                        self.logger.info(
-                            f"Downloaded {object_key} ({actual_size} bytes)"
-                        )
-                        downloaded_files.append(local_path)
-                    else:
-                        self.logger.error(f"Download failed: {local_path} not found")
-
-                except Exception as e:
-                    self.logger.error(f"Error downloading {object_key}: {str(e)}")
-                    continue
-
-            self.logger.info(
-                f"Successfully downloaded {len(downloaded_files)} Excel files"
-            )
-            return downloaded_files
-
-        except Exception as e:
-            self.logger.error(f"Error downloading Excel files: {str(e)}")
-            return []
-
-    def _archive_processed_files_to_cos(self, processed_files: List[str]):
-        """Archive processed files back to COS under archive/ directory."""
-        if not processed_files or self.environment != "prod" or not self.cos_client:
-            if self.environment != "prod":
-                self.logger.info("Skipping COS archival (not in PROD mode)")
-            return
-
-        try:
-            archive_date = datetime.now().strftime("%Y%m%d")
-
-            def find_original_key_by_basename(target_basename: str) -> Optional[str]:
-                continuation_token = None
-                while True:
-                    if continuation_token:
-                        response = self.cos_client.list_objects_v2(
-                            Bucket=self.bucket_name,
-                            ContinuationToken=continuation_token,
-                        )
-                    else:
-                        response = self.cos_client.list_objects_v2(
-                            Bucket=self.bucket_name
-                        )
-
-                    if "Contents" in response:
-                        for obj in response["Contents"]:
-                            key_candidate = obj["Key"]
-                            if key_candidate.startswith("archive/"):
-                                continue
-                            if os.path.basename(key_candidate) == target_basename:
-                                return key_candidate
-
-                    if response.get("IsTruncated"):
-                        continuation_token = response.get("NextContinuationToken")
-                    else:
-                        break
-                return None
-
-            for file_path in processed_files:
-                try:
-                    original_filename = os.path.basename(file_path)
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    name_without_ext, ext = os.path.splitext(original_filename)
-                    archived_filename = f"{name_without_ext}_{timestamp}{ext}"
-                    archive_key = f"archive/{archive_date}/{archived_filename}"
-
-                    original_key = find_original_key_by_basename(original_filename)
-
-                    if original_key:
-                        # Server-side copy then delete original
-                        self.cos_client.copy_object(
-                            Bucket=self.bucket_name,
-                            Key=archive_key,
-                            CopySource={
-                                "Bucket": self.bucket_name,
-                                "Key": original_key,
-                            },
-                        )
-                        self.cos_client.delete_object(
-                            Bucket=self.bucket_name, Key=original_key
-                        )
-                        self.logger.info(
-                            f"Archived '{original_key}' to '{archive_key}'"
-                        )
-                    else:
-                        self.logger.warning(
-                            f"Could not find original object to archive for '{original_filename}'"
-                        )
-
-                except Exception as e:
-                    self.logger.error(f"Error archiving {file_path}: {str(e)}")
-
-        except Exception as e:
-            self.logger.error(f"Error in archive process: {str(e)}")
-
-    def _archive_single_file_to_cos(self, filename: str):
-        """Archive a single processed file to COS."""
+    def _archive_file_to_cos(self, filename: str):
+        """Archive processed file to COS archive directory."""
         if self.environment != "prod" or not self.cos_client:
             return
 
@@ -661,47 +491,20 @@ class COSExcelProcessorComplete:
             "cloud_region": os.getenv("CLOUD_REGION", "eu-de"),
         }
 
-    def process_single_file_from_trigger(self, filename: str) -> bool:
-        """Process only the specific file that triggered the event."""
-        try:
-            self.logger.info(f"Processing triggered file: {filename}")
-
-            if self.environment == "test":
-                # TEST MODE: Process specific local file
-                abs_paths = self.config.processing.get_absolute_paths()
-                input_dir = abs_paths["input_dir"]
-                file_path = os.path.join(input_dir, filename)
-
-                if not os.path.exists(file_path):
-                    self.logger.error(f"File not found in local directory: {filename}")
-                    return False
-
-                if not self._is_excel_file(filename):
-                    self.logger.info(f"Ignoring non-Excel file: {filename}")
-                    return True
-
-                self.logger.info(f"Processing local file: {file_path}")
-                return self._process_specific_local_file(file_path)
-
-            else:
-                # PROD MODE: Download and process specific COS file
-                return self._process_specific_cos_file(filename)
-
-        except Exception as e:
-            self.logger.error(f"Error processing single file {filename}: {str(e)}")
-            return False
-
-    def _process_specific_local_file(self, file_path: str) -> bool:
-        """Process a specific local file using Excel service logic."""
+    def _process_excel_file(self, file_path: str) -> bool:
+        """
+        Process a single Excel file using excel_service internal methods.
+        This processes ONLY the specified file with all the existing logic.
+        """
         try:
             filename = os.path.basename(file_path)
             file_size = os.path.getsize(file_path)
 
             self.logger.info(
-                f"Processing local file: {filename} ({self._format_file_size(file_size)})"
+                f"Processing Excel file: {filename} ({self._format_file_size(file_size)})"
             )
 
-            # Get configuration for this file
+            # Get configuration for this specific file
             config_key = self.excel_service._get_config_key_from_filename(filename)
             if not config_key:
                 self.logger.error(f"No configuration found for file: {filename}")
@@ -714,7 +517,7 @@ class COSExcelProcessorComplete:
                 )
                 return False
 
-            # Load and process the Excel file
+            # Load and process the Excel file using excel_service internal methods
             import pandas as pd
 
             xl = pd.ExcelFile(file_path)
@@ -723,8 +526,9 @@ class COSExcelProcessorComplete:
             file_level_key_values = {}
 
             total_tables = 0
+            total_rows = 0
 
-            # Process each sheet in the file
+            # Process each sheet in the file using excel_service methods
             for sheet_name, sheet_config in file_config.items():
                 try:
                     sheet_result = self.excel_service._process_sheet(
@@ -748,20 +552,53 @@ class COSExcelProcessorComplete:
                 )
                 self.logger.info(f"Merge operations completed: {merge_results}")
 
-            # Archive the processed file locally
-            self.excel_service._archive_processed_file(file_path)
+            # Archive the processed file locally (TEST mode only)
+            if self.environment == "test":
+                self.excel_service._archive_processed_file(file_path)
 
             self.logger.info(
-                f"Successfully processed {filename}: {total_tables} tables"
+                f"Successfully processed {filename}: {total_tables} tables, {total_rows} rows"
             )
             return True
 
         except Exception as e:
-            self.logger.error(f"Error processing local file {file_path}: {str(e)}")
+            self.logger.error(f"Error processing Excel file {file_path}: {str(e)}")
             return False
 
-    def _process_specific_cos_file(self, filename: str) -> bool:
-        """Download and process a specific file from COS."""
+    def process_file(self, filename: str) -> bool:
+        """Process the specific file that triggered this job."""
+        try:
+            env_info = self._get_environment_info()
+            self.logger.info(f"Environment info: {env_info}")
+            self.logger.info(f"Processing triggered file: {filename}")
+
+            if self.environment == "test":
+                # TEST MODE: Process specific local file
+                abs_paths = self.config.processing.get_absolute_paths()
+                input_dir = abs_paths["input_dir"]
+                file_path = os.path.join(input_dir, filename)
+
+                if not os.path.exists(file_path):
+                    self.logger.error(f"File not found in local directory: {filename}")
+                    return False
+
+                if not self._is_excel_file(filename):
+                    self.logger.info(f"Ignoring non-Excel file: {filename}")
+                    return True
+
+                self.logger.info(f"Processing local file: {file_path}")
+                return self._process_excel_file(file_path)
+
+            else:
+                # PROD MODE: Download and process specific COS file
+                return self._process_cos_file(filename)
+
+        except Exception as e:
+            self.logger.error(f"Error processing file {filename}: {str(e)}")
+            return False
+
+    def _process_cos_file(self, filename: str) -> bool:
+        """Download and process the specific file from COS."""
         try:
             if not self._is_excel_file(filename):
                 self.logger.info(f"Ignoring non-Excel file: {filename}")
@@ -776,11 +613,11 @@ class COSExcelProcessorComplete:
             file_size = self._format_file_size(metadata["size"])
             self.logger.info(f"Processing COS file: {filename} ({file_size})")
 
-            # Setup temp directory and download specific file
+            # Setup temp directory and download the specific file
             input_dir = self._setup_temp_processing_directory()
             local_path = os.path.join(input_dir, filename)
 
-            # Download the specific file
+            # Download only the triggered file
             self.cos_client.download_file(
                 Bucket=self.bucket_name, Key=filename, Filename=local_path
             )
@@ -791,12 +628,12 @@ class COSExcelProcessorComplete:
 
             self.logger.info(f"Downloaded {filename} for processing")
 
-            # Process the single file using the same logic as local processing
-            success = self._process_specific_local_file(local_path)
+            # Process the single file
+            success = self._process_excel_file(local_path)
 
             if success:
-                # Archive the file in COS (server-side copy)
-                self._archive_single_file_to_cos(filename)
+                # Archive the file in COS
+                self._archive_file_to_cos(filename)
 
             return success
 
@@ -807,91 +644,19 @@ class COSExcelProcessorComplete:
             # Cleanup temp directory
             self._cleanup_temp_directory()
 
-    def process_all_excel_files(self) -> bool:
-        """Process all Excel files based on environment mode (batch processing)."""
+    def run(self, filename: str) -> int:
+        """Main entry point for processing the triggered file."""
         try:
-            env_info = self._get_environment_info()
-            self.logger.info(f"Running in environment: {env_info}")
+            self.logger.info("=== COS Excel Processor - Trigger Mode ===")
+            self.logger.info(f"Processing file: {filename}")
 
             if self.environment == "test":
-                # TEST MODE: Process local files
-                self.logger.info("TEST MODE: Processing all local files")
-
-                excel_files = self._get_local_excel_files()
-
-                if not excel_files:
-                    self.logger.info(
-                        "No Excel files found to process in local directory"
-                    )
-                    self.logger.info(
-                        "Place Excel files in data/input/ directory for processing"
-                    )
-                    return True
-
-                # Process Excel files using existing service
-                self.logger.info("Starting Excel file processing...")
-                results = self.excel_service.process_all_files()
-
+                self.logger.info("TEST MODE: Processing local file")
             else:
-                # PROD MODE: Download from COS and process
-                self.logger.info("PROD MODE: Downloading and processing all COS files")
+                self.logger.info("PROD MODE: Processing COS file")
 
-                input_dir = self._setup_temp_processing_directory()
-                excel_files = self._download_excel_files_from_cos(input_dir)
-
-                if not excel_files:
-                    self.logger.info("No Excel files found to process in COS bucket")
-                    return True
-
-                # Process Excel files using existing service
-                self.logger.info("Starting Excel file processing...")
-                results = self.excel_service.process_all_files()
-
-            if results.get("success", False):
-                # Log processing results
-                stats = results.get("stats", {})
-                self.logger.info(
-                    f"Excel processing completed successfully: "
-                    f"{stats.get('files_processed', 0)} files, "
-                    f"{stats.get('tables_extracted', 0)} tables, "
-                    f"{stats.get('rows_processed', 0)} rows"
-                )
-
-                # Archive processed files (only in PROD mode with COS)
-                if self.environment == "prod":
-                    self._archive_processed_files_to_cos(excel_files)
-                else:
-                    self.logger.info("TEST mode: Skipping COS archival")
-
-                return True
-            else:
-                self.logger.error(
-                    f"Excel processing failed: {results.get('error', 'Unknown error')}"
-                )
-                return False
-
-        except Exception as e:
-            self.logger.error(f"Error in process_all_excel_files: {str(e)}")
-            return False
-
-        finally:
-            # Always cleanup temp directory (only used in PROD mode)
-            if self.environment == "prod":
-                self._cleanup_temp_directory()
-
-    def run_from_trigger(self, filename: str) -> int:
-        """Main entry point for trigger-based processing of specific file."""
-        try:
-            self.logger.info("=== COS Excel Processor - Single File Mode ===")
-            self.logger.info(f"Processing triggered file: {filename}")
-
-            if self.environment == "test":
-                self.logger.info("TEST MODE: Processing specific local file")
-            else:
-                self.logger.info("PROD MODE: Processing specific COS file")
-
-            # Process only the triggered file
-            success = self.process_single_file_from_trigger(filename)
+            # Process the triggered file
+            success = self.process_file(filename)
 
             if success:
                 self.logger.info(f"Successfully processed {filename}")
@@ -907,69 +672,72 @@ class COSExcelProcessorComplete:
             # Upload logs (only in PROD mode)
             self._upload_captured_logs_to_cos()
 
-    def run_from_event(self, event_json: str) -> int:
-        """Main entry point for batch processing of all files."""
+
+def get_triggered_filename() -> str:
+    """
+    Extract the filename that triggered this job.
+
+    In production: Filename comes from COS event trigger
+    In testing: Filename comes from command line argument
+    """
+    if len(sys.argv) > 1:
+        # Filename provided as command line argument
+        return sys.argv[1]
+
+    # Try to get filename from Code Engine event environment variables
+    # These are typically set by the COS trigger
+    event_source = os.getenv("CE_SOURCE", "")
+    if "object" in event_source:
         try:
-            self.logger.info("=== COS Excel Processor - Batch Mode ===")
+            import json
 
-            if self.environment == "test":
-                self.logger.info(
-                    "TEST MODE: Processing all files from data/input/ directory"
-                )
-            else:
-                self.logger.info("PROD MODE: Processing all files from COS bucket")
+            source_data = json.loads(event_source)
+            return source_data.get("object", {}).get("key", "")
+        except:
+            pass
 
-            # Process all Excel files
-            success = self.process_all_excel_files()
+    # Try alternative environment variable patterns
+    triggered_file = os.getenv("TRIGGERED_FILE", "")
+    if triggered_file:
+        return triggered_file
 
-            if success:
-                self.logger.info("Processing completed successfully")
-                return 0
-            else:
-                self.logger.error("Processing failed")
-                return 1
+    object_key = os.getenv("OBJECT_KEY", "")
+    if object_key:
+        return object_key
 
-        except Exception as e:
-            self.logger.error(f"Unexpected error in run_from_event: {str(e)}")
-            return 1
-        finally:
-            # Upload logs (only in PROD mode)
-            self._upload_captured_logs_to_cos()
+    # If no filename found, this is an error
+    raise ValueError(
+        "No filename found. Please provide filename as argument or ensure COS trigger is configured correctly."
+    )
 
 
 def main():
     """
-    Main entry point supporting both batch and single-file processing modes.
+    Main entry point for trigger-based Excel processing.
 
     Usage:
-        python app_cloud.py                    # Process all files (batch mode)
-        python app_cloud.py filename.xlsx     # Process specific file (trigger mode)
+        python app_cloud.py "filename.xlsx"  # Local testing
+        # Production: Filename automatically extracted from trigger
     """
     try:
         _start_terminal_capture()
 
         environment = os.getenv("ENVIRONMENT", "prod").lower()
-        processor = COSExcelProcessorComplete()
+        print(f"=== Excel File Processor ===")
+        print(f"Environment: {environment.upper()}")
 
-        # Check if a specific filename was provided as argument
-        if len(sys.argv) > 1:
-            filename = sys.argv[1]
-            print("=== Single File Processing Mode ===")
-            print(f"Environment: {environment.upper()}")
-            print(f"Processing file: {filename}")
+        # Get the filename that triggered this job
+        try:
+            filename = get_triggered_filename()
+            print(f"Processing triggered file: {filename}")
+        except ValueError as e:
+            print(f"Error: {e}")
+            print("Usage: python app_cloud.py 'filename.xlsx'")
+            return 1
 
-            return processor.run_from_trigger(filename)
-        else:
-            # Batch processing mode
-            print("=== Batch Processing Mode ===")
-            print(f"Environment: {environment.upper()}")
-
-            if environment == "test":
-                print("Processing all files from local data/input/ directory")
-            else:
-                print("Processing all files from COS bucket")
-
-            return processor.run_from_event("")
+        # Initialize processor and process the file
+        processor = COSExcelProcessor()
+        return processor.run(filename)
 
     except KeyboardInterrupt:
         print("\nProcessor stopped by user")
