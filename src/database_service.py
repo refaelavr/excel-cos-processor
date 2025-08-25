@@ -551,6 +551,16 @@ class DatabaseService:
 
         return self.bulk_upsert(df, db_table_name, primary_keys, skip_empty_updates)
 
+    def close(self):
+        """Close any open database connections and cleanup resources"""
+        # DatabaseService doesn't maintain persistent connections,
+        # but this method can be used for any future cleanup needs
+        pass
+
+    def __del__(self):
+        """Destructor to ensure cleanup when object is garbage collected"""
+        self.close()
+
 
 # Backward compatibility function
 def export_to_database(

@@ -154,6 +154,10 @@ class COSExcelProcessorComplete:
         self._setup_excel_services()
         self.temp_dir = None
 
+    def __del__(self):
+        """Destructor to ensure cleanup when object is garbage collected"""
+        self._cleanup_resources()
+
     def _upload_captured_logs_to_cos(self):
         """Upload captured terminal output to COS for production audit trail."""
         if self.environment != "prod" or not self.cos_client:
@@ -476,6 +480,23 @@ class COSExcelProcessorComplete:
                 self.logger.info(f"Cleaned up temporary directory: {self.temp_dir}")
             except Exception as e:
                 self.logger.warning(f"Error cleaning up temp directory: {str(e)}")
+
+    def _cleanup_resources(self):
+        """Clean up all resources including database connections."""
+        try:
+            # Clean up database service if it exists
+            if hasattr(self, 'db_service') and self.db_service:
+                self.logger.info("Closing database service connections...")
+                self.db_service.close()
+                self.logger.info("Database service connections closed")
+            
+            # Clean up temp directory
+            self._cleanup_temp_directory()
+            
+            self.logger.info("Resource cleanup completed")
+            
+        except Exception as e:
+            self.logger.warning(f"Error during resource cleanup: {str(e)}")
 
     def _get_local_excel_files(self) -> List[str]:
         """Get Excel files from local data/input/ directory for TEST mode."""
@@ -1037,8 +1058,8 @@ class COSExcelProcessorComplete:
             self.logger.error(f"Error processing COS file {cos_key}: {str(e)}")
             return False
         finally:
-            # Cleanup temp directory
-            self._cleanup_temp_directory()
+            # Cleanup all resources
+            self._cleanup_resources()
 
     def process_all_excel_files(self) -> bool:
         """Process all Excel files based on environment mode (batch processing)."""
@@ -1115,9 +1136,8 @@ class COSExcelProcessorComplete:
             return False
 
         finally:
-            # Always cleanup temp directory (only used in PROD mode)
-            if self.environment == "prod":
-                self._cleanup_temp_directory()
+            # Always cleanup all resources
+            self._cleanup_resources()
 
     def run_from_trigger(self, filename: str) -> int:
         """Main entry point for trigger-based processing of specific file."""
@@ -1146,6 +1166,8 @@ class COSExcelProcessorComplete:
         finally:
             # Upload logs (only in PROD mode)
             self._upload_captured_logs_to_cos()
+            # Cleanup resources
+            self._cleanup_resources()
 
     def run_from_event(self, event_json: str) -> int:
         """Main entry point for batch processing of all files."""
@@ -1175,6 +1197,8 @@ class COSExcelProcessorComplete:
         finally:
             # Upload logs (only in PROD mode)
             self._upload_captured_logs_to_cos()
+            # Cleanup resources
+            self._cleanup_resources()
 
 
 def main():
@@ -1241,6 +1265,7 @@ def main():
         try:
             if "processor" in locals():
                 processor._upload_captured_logs_to_cos()
+                processor._cleanup_resources()
         except Exception:
             pass
         _stop_terminal_capture()
