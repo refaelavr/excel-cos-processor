@@ -154,6 +154,10 @@ class COSExcelProcessorComplete:
         self._setup_excel_services()
         self.temp_dir = None
 
+    def __del__(self):
+        """Destructor to ensure cleanup when object is garbage collected"""
+        self._cleanup_resources()
+
     def _upload_captured_logs_to_cos(self):
         """Upload captured terminal output to COS for production audit trail."""
         if self.environment != "prod" or not self.cos_client:
@@ -477,6 +481,23 @@ class COSExcelProcessorComplete:
             except Exception as e:
                 self.logger.warning(f"Error cleaning up temp directory: {str(e)}")
 
+    def _cleanup_resources(self):
+        """Clean up all resources including database connections."""
+        try:
+            # Clean up database service if it exists
+            if hasattr(self, "db_service") and self.db_service:
+                self.logger.info("Closing database service connections...")
+                self.db_service.close()
+                self.logger.info("Database service connections closed")
+
+            # Clean up temp directory
+            self._cleanup_temp_directory()
+
+            self.logger.info("Resource cleanup completed")
+
+        except Exception as e:
+            self.logger.warning(f"Error during resource cleanup: {str(e)}")
+
     def _get_local_excel_files(self) -> List[str]:
         """Get Excel files from local data/input/ directory for TEST mode."""
         try:
@@ -671,9 +692,12 @@ class COSExcelProcessorComplete:
         Args:
             cos_key: The COS key of the file to archive
             success: True if processing was successful, False if failed
+
+        Returns:
+            str: The archive path where the file was moved, or None if archiving failed
         """
         if self.environment != "prod" or not self.cos_client:
-            return
+            return None
 
         try:
             archive_date = datetime.now().strftime("%Y%m%d")
@@ -710,8 +734,11 @@ class COSExcelProcessorComplete:
                     f"Archived failed file '{cos_key}' to '{archive_key}'"
                 )
 
+            return archive_key
+
         except Exception as e:
             self.logger.error(f"Error archiving {cos_key}: {str(e)}")
+            return None
 
     def _get_environment_info(self) -> Dict[str, str]:
         """Get environment information for logging."""
@@ -923,8 +950,13 @@ class COSExcelProcessorComplete:
             self.logger.error(f"Error processing single file {filename}: {str(e)}")
             return False
 
-    def _process_specific_local_file(self, file_path: str) -> bool:
-        """Process a specific local file using Excel service logic."""
+    def _process_specific_local_file(self, file_path: str) -> tuple[bool, str]:
+        """
+        Process a specific local file using Excel service logic.
+
+        Returns:
+            tuple: (success: bool, error_message: str)
+        """
         try:
             filename = os.path.basename(file_path)
             file_size = os.path.getsize(file_path)
@@ -936,25 +968,30 @@ class COSExcelProcessorComplete:
             # Get configuration for this file
             config_key = self.excel_service._get_config_key_from_filename(filename)
             if not config_key:
-                self.logger.error(f"No configuration found for file: {filename}")
-                return False
+                error_msg = f"No configuration found for file: {filename}"
+                self.logger.error(error_msg)
+                return False, error_msg
 
             file_config = self.config.get_file_config(config_key)
             if not file_config:
-                self.logger.error(
-                    f"Configuration missing for resolved key: {config_key}"
-                )
-                return False
+                error_msg = f"Configuration missing for resolved key: {config_key}"
+                self.logger.error(error_msg)
+                return False, error_msg
 
             # Load and process the Excel file
             import pandas as pd
 
-            xl = pd.ExcelFile(file_path)
+            try:
+                xl = pd.ExcelFile(file_path)
+            except Exception as e:
+                error_msg = f"Failed to load Excel file {filename}: {str(e)}"
+                self.logger.error(error_msg)
+                return False, error_msg
 
             tables_for_merge = {}
             file_level_key_values = {}
-
             total_tables = 0
+            processing_errors = []
 
             # Process each sheet in the file
             for sheet_name, sheet_config in file_config.items():
@@ -969,28 +1006,54 @@ class COSExcelProcessorComplete:
                     )
                     total_tables += sheet_result.get("tables_processed", 0)
 
+                    # Collect database errors from this sheet
+                    sheet_db_errors = sheet_result.get("database_errors", [])
+                    if sheet_db_errors:
+                        processing_errors.extend(sheet_db_errors)
+
                 except Exception as e:
-                    self.logger.error(f"Error processing sheet {sheet_name}: {str(e)}")
+                    sheet_error = f"Error processing sheet {sheet_name}: {str(e)}"
+                    self.logger.error(sheet_error)
+                    processing_errors.append(sheet_error)
                     continue
 
             # Process any merge operations
             if tables_for_merge:
-                merge_results = self.excel_service._process_merge_operations(
-                    tables_for_merge
-                )
-                self.logger.info(f"Merge operations completed: {merge_results}")
+                try:
+                    merge_results = self.excel_service._process_merge_operations(
+                        tables_for_merge
+                    )
+                    self.logger.info(f"Merge operations completed: {merge_results}")
+                except Exception as e:
+                    merge_error = f"Error in merge operations: {str(e)}"
+                    self.logger.error(merge_error)
+                    processing_errors.append(merge_error)
 
             # Archive the processed file locally
-            self.excel_service._archive_processed_file(file_path)
+            try:
+                self.excel_service._archive_processed_file(file_path)
+            except Exception as e:
+                archive_error = f"Error archiving processed file: {str(e)}"
+                self.logger.error(archive_error)
+                processing_errors.append(archive_error)
+
+            # Check if we had any processing errors
+            if processing_errors:
+                error_msg = (
+                    f"Processing completed with errors: {'; '.join(processing_errors)}"
+                )
+                self.logger.warning(error_msg)
+                return False, error_msg
 
             self.logger.info(
                 f"Successfully processed {filename}: {total_tables} tables"
             )
-            return True
+            return True, ""
 
         except Exception as e:
-            self.logger.error(f"Error processing local file {file_path}: {str(e)}")
-            return False
+            error_msg = f"Error processing local file {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            return False, error_msg
 
     def _process_specific_cos_file(self, cos_key: str) -> bool:
         """Download and process a specific file from COS."""
@@ -1008,6 +1071,19 @@ class COSExcelProcessorComplete:
             file_size = self._format_file_size(metadata["size"])
             self.logger.info(f"Processing COS file: {cos_key} ({file_size})")
 
+            # Create processing status record
+            filename = os.path.basename(cos_key)
+            if self.config.processing.enable_database and hasattr(self, "db_service"):
+                env_info = self._get_environment_info()
+                self.db_service.create_file_processing_record(
+                    file_name=filename,
+                    cos_key=cos_key,
+                    job_run_name=env_info.get("ce_jobrun", "unknown"),
+                    ce_jobrun=env_info.get("ce_jobrun", "unknown"),
+                    ce_job=env_info.get("ce_job", "unknown"),
+                    file_size_bytes=metadata.get("size"),
+                )
+
             # Setup temp directory and download specific file
             input_dir = self._setup_temp_processing_directory()
             # Use just the filename for local path, but full key for download
@@ -1020,16 +1096,45 @@ class COSExcelProcessorComplete:
             )
 
             if not os.path.exists(local_path):
-                self.logger.error(f"Download failed for {cos_key}")
+                error_msg = f"Download failed for {cos_key}"
+                self.logger.error(error_msg)
+
+                # Update status to failed
+                if self.config.processing.enable_database and hasattr(
+                    self, "db_service"
+                ):
+                    self.db_service.update_file_processing_status(
+                        file_name=filename, status="failed", error_message=error_msg
+                    )
                 return False
 
             self.logger.info(f"Downloaded {cos_key} to {local_path}")
 
             # Process the single file using the same logic as local processing
-            success = self._process_specific_local_file(local_path)
+            success, processing_error = self._process_specific_local_file(local_path)
 
             # Archive the file in COS (server-side copy) - always archive, but to different folders
-            self._archive_single_file_to_cos(cos_key, success=success)
+            archive_path = self._archive_single_file_to_cos(cos_key, success=success)
+
+            # Update processing status
+            if self.config.processing.enable_database and hasattr(self, "db_service"):
+                status = "success" if success else "failed"
+                error_message = processing_error if not success else None
+
+                # Get log file name
+                log_file_name = None
+                if hasattr(self, "run_start_time"):
+                    date_part = self.run_start_time.strftime("%Y%m%d")
+                    ts_part = self.run_start_time.strftime("%Y%m%d_%H%M%S")
+                    log_file_name = f"excel_proccessor_{ts_part}.log"
+
+                self.db_service.update_file_processing_status(
+                    file_name=filename,
+                    status=status,
+                    error_message=error_message,
+                    archive_path=archive_path,
+                    log_file_name=log_file_name,
+                )
 
             return success
 
@@ -1037,8 +1142,8 @@ class COSExcelProcessorComplete:
             self.logger.error(f"Error processing COS file {cos_key}: {str(e)}")
             return False
         finally:
-            # Cleanup temp directory
-            self._cleanup_temp_directory()
+            # Cleanup all resources
+            self._cleanup_resources()
 
     def process_all_excel_files(self) -> bool:
         """Process all Excel files based on environment mode (batch processing)."""
@@ -1115,9 +1220,8 @@ class COSExcelProcessorComplete:
             return False
 
         finally:
-            # Always cleanup temp directory (only used in PROD mode)
-            if self.environment == "prod":
-                self._cleanup_temp_directory()
+            # Always cleanup all resources
+            self._cleanup_resources()
 
     def run_from_trigger(self, filename: str) -> int:
         """Main entry point for trigger-based processing of specific file."""
@@ -1146,6 +1250,8 @@ class COSExcelProcessorComplete:
         finally:
             # Upload logs (only in PROD mode)
             self._upload_captured_logs_to_cos()
+            # Cleanup resources
+            self._cleanup_resources()
 
     def run_from_event(self, event_json: str) -> int:
         """Main entry point for batch processing of all files."""
@@ -1175,6 +1281,8 @@ class COSExcelProcessorComplete:
         finally:
             # Upload logs (only in PROD mode)
             self._upload_captured_logs_to_cos()
+            # Cleanup resources
+            self._cleanup_resources()
 
 
 def main():
@@ -1241,6 +1349,7 @@ def main():
         try:
             if "processor" in locals():
                 processor._upload_captured_logs_to_cos()
+                processor._cleanup_resources()
         except Exception:
             pass
         _stop_terminal_capture()
