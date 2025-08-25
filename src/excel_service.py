@@ -370,6 +370,9 @@ class ExcelProcessingService:
             "file_level_key_values": file_level_key_values,
         }
 
+        # Initialize database errors collection for this sheet
+        sheet_database_errors = []
+
         # Process regular tables with titles
         tables_processed = self._process_regular_tables(
             df, sheet_config, key_values, key_values_def, file_level_key_values
@@ -389,6 +392,14 @@ class ExcelProcessingService:
             file_level_key_values,
         )
         sheet_result["tables_processed"] += no_title_processed
+
+        # Collect database errors from this sheet's processing
+        if hasattr(self, "database_errors") and self.database_errors:
+            sheet_database_errors.extend(self.database_errors)
+            # Clear the errors for next sheet
+            self.database_errors = []
+
+        sheet_result["database_errors"] = sheet_database_errors
 
         return sheet_result
 
@@ -425,7 +436,14 @@ class ExcelProcessingService:
                     table_def.get("export_to_db", False)
                     and self.config.processing.enable_database
                 ):
-                    self._export_table_to_database(processed_table, title, table_def)
+                    db_success, db_error = self._export_table_to_database(
+                        processed_table, title, table_def
+                    )
+                    if not db_success:
+                        # Store database error for later reporting
+                        if not hasattr(self, "database_errors"):
+                            self.database_errors = []
+                        self.database_errors.append(f"{title}: {db_error}")
 
                 self.processing_stats["tables_extracted"] += 1
                 self.processing_stats["rows_processed"] += len(processed_table)
@@ -506,9 +524,14 @@ class ExcelProcessingService:
                     no_title_table.get("export_to_db", False)
                     and self.config.processing.enable_database
                 ):
-                    self._export_table_to_database(
+                    db_success, db_error = self._export_table_to_database(
                         processed_table, title, no_title_table
                     )
+                    if not db_success:
+                        # Store database error for later reporting
+                        if not hasattr(self, "database_errors"):
+                            self.database_errors = []
+                        self.database_errors.append(f"{title}: {db_error}")
 
             self.processing_stats["tables_extracted"] += 1
             self.processing_stats["rows_processed"] += len(table)
@@ -573,21 +596,27 @@ class ExcelProcessingService:
 
     def _export_table_to_database(
         self, table: pd.DataFrame, title: str, table_config: Dict
-    ):
-        """Export table to database using DatabaseService"""
+    ) -> tuple[bool, str]:
+        """
+        Export table to database using DatabaseService
+
+        Returns:
+            tuple: (success: bool, error_message: str)
+        """
         primary_keys = table_config.get("primary_keys")
         if not primary_keys:
-            print_warning(
-                f"      WARNING: '{title}' marked for DB export but no primary_keys defined!"
+            error_msg = (
+                f"WARNING: '{title}' marked for DB export but no primary_keys defined!"
             )
-            return
+            print_warning(f"      {error_msg}")
+            return False, error_msg
 
         try:
             from database_service import DatabaseService
 
             db_service = DatabaseService(self.config.database.to_dict())
 
-            success = db_service.export_table(
+            success, error_msg = db_service.export_table(
                 table,
                 title,
                 primary_keys,
@@ -597,13 +626,19 @@ class ExcelProcessingService:
 
             if success:
                 print_success(f"      Successfully exported '{title}' to database")
+                return True, ""
             else:
-                print_error(f"      Failed to export '{title}' to database")
+                print_error(
+                    f"      Failed to export '{title}' to database: {error_msg}"
+                )
                 self.processing_stats["errors"] += 1
+                return False, error_msg
 
         except Exception as e:
-            print_error(f"      Database export error for '{title}': {str(e)}")
+            error_msg = f"Database export error for '{title}': {str(e)}"
+            print_error(f"      {error_msg}")
             self.processing_stats["errors"] += 1
+            return False, error_msg
 
     def _process_merge_operations(self, tables_for_merge: Dict) -> Dict[str, Any]:
         """Process all table merge operations"""

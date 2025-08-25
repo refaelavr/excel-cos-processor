@@ -8,6 +8,7 @@ import psycopg2
 from psycopg2.extras import execute_values
 import os
 import numpy as np
+from datetime import datetime
 from typing import List, Dict, Optional, Union
 
 # Import from same directory (src/)
@@ -371,8 +372,16 @@ class DatabaseService:
             return True
 
         except Exception as e:
-            print_error(f"Standard bulk upsert failed: {str(e)}")
-            conn.rollback()
+            error_details = (
+                f"Standard bulk upsert failed for table '{table_name}': {str(e)}"
+            )
+            if hasattr(e, "pgcode"):
+                error_details += f" (PostgreSQL code: {e.pgcode})"
+            if hasattr(e, "pgerror"):
+                error_details += f" (PostgreSQL error: {e.pgerror})"
+            print_error(error_details)
+            if conn:
+                conn.rollback()
             return False
 
     def _bulk_upsert_merge_mode(self, conn, df, table_name, primary_keys, batch_size):
@@ -516,8 +525,16 @@ class DatabaseService:
             return True
 
         except Exception as e:
-            print_error(f"Merge mode bulk upsert failed: {str(e)}")
-            conn.rollback()
+            error_details = (
+                f"Merge mode bulk upsert failed for table '{table_name}': {str(e)}"
+            )
+            if hasattr(e, "pgcode"):
+                error_details += f" (PostgreSQL code: {e.pgcode})"
+            if hasattr(e, "pgerror"):
+                error_details += f" (PostgreSQL error: {e.pgerror})"
+            print_error(error_details)
+            if conn:
+                conn.rollback()
             return False
 
     def export_table(
@@ -527,15 +544,22 @@ class DatabaseService:
         primary_keys: List[str],
         skip_empty_updates: bool = False,
         explicit_table_name: Optional[str] = None,
-    ) -> bool:
-        """Main export function"""
+    ) -> tuple[bool, str]:
+        """
+        Main export function
+
+        Returns:
+            tuple: (success: bool, error_message: str)
+        """
         if df is None or len(df) == 0:
-            print_warning(f"Cannot export {table_title}: table is empty or None")
-            return False
+            error_msg = f"Cannot export {table_title}: table is empty or None"
+            print_warning(error_msg)
+            return False, error_msg
 
         if not primary_keys:
-            print_error(f"Cannot export {table_title}: primary_keys is required")
-            return False
+            error_msg = f"Cannot export {table_title}: primary_keys is required"
+            print_error(error_msg)
+            return False, error_msg
 
         # Use explicit table name or sanitize the title
         db_table_name = (
@@ -549,7 +573,209 @@ class DatabaseService:
             f"Exporting '{table_title}' to '{db_table_name}' using {logic_type}"
         )
 
-        return self.bulk_upsert(df, db_table_name, primary_keys, skip_empty_updates)
+        try:
+            success = self.bulk_upsert(
+                df, db_table_name, primary_keys, skip_empty_updates
+            )
+            if success:
+                return True, ""
+            else:
+                return False, f"Bulk upsert failed for table '{table_title}'"
+        except Exception as e:
+            error_msg = f"Export failed for table '{table_title}': {str(e)}"
+            if hasattr(e, "pgcode"):
+                error_msg += f" (PostgreSQL code: {e.pgcode})"
+            if hasattr(e, "pgerror"):
+                error_msg += f" (PostgreSQL error: {e.pgerror})"
+            return False, error_msg
+
+    def create_file_processing_record(
+        self,
+        file_name: str,
+        cos_key: str,
+        job_run_name: str,
+        ce_jobrun: str,
+        ce_job: str,
+        file_size_bytes: Optional[int] = None,
+    ) -> bool:
+        """
+        Create a new processing record when file processing starts
+
+        Returns:
+            bool: True if record was created successfully
+        """
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return False
+
+            cursor = conn.cursor()
+
+            query = """
+                INSERT INTO file_processing_status 
+                (file_name, cos_key, status, job_run_name, ce_jobrun, ce_job, file_size_bytes, processing_start_time)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """
+
+            cursor.execute(
+                query,
+                (
+                    file_name,
+                    cos_key,
+                    "processing",
+                    job_run_name,
+                    ce_jobrun,
+                    ce_job,
+                    file_size_bytes,
+                    datetime.now(),
+                ),
+            )
+
+            record_id = cursor.fetchone()[0]
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            print_success(
+                f"Created processing record (ID: {record_id}) for file: {file_name}"
+            )
+            return True
+
+        except Exception as e:
+            print_error(f"Error creating processing record for {file_name}: {str(e)}")
+            if conn:
+                conn.rollback()
+                conn.close()
+            return False
+
+    def update_file_processing_status(
+        self,
+        file_name: str,
+        status: str,
+        error_message: Optional[str] = None,
+        archive_path: Optional[str] = None,
+        log_file_name: Optional[str] = None,
+    ) -> bool:
+        """
+        Update the processing status of a file
+
+        Args:
+            file_name: The filename to update
+            status: New status (success, failed, archived)
+            error_message: Error message if status is failed
+            archive_path: Path where file was archived
+            log_file_name: Name of the log file
+
+        Returns:
+            bool: True if update was successful
+        """
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return False
+
+            cursor = conn.cursor()
+
+            query = """
+                UPDATE file_processing_status 
+                SET status = %s, 
+                    error_message = %s,
+                    archive_path = %s,
+                    log_file_name = %s,
+                    processing_end_time = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE file_name = %s 
+                AND status = 'processing'
+                ORDER BY created_at DESC 
+                LIMIT 1
+            """
+
+            cursor.execute(
+                query,
+                (
+                    status,
+                    error_message,
+                    archive_path,
+                    log_file_name,
+                    datetime.now(),
+                    file_name,
+                ),
+            )
+
+            rows_affected = cursor.rowcount
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            if rows_affected > 0:
+                print_success(f"Updated status to '{status}' for file: {file_name}")
+                return True
+            else:
+                print_warning(
+                    f"No processing record found to update for file: {file_name}"
+                )
+                return False
+
+        except Exception as e:
+            print_error(f"Error updating processing status for {file_name}: {str(e)}")
+            if conn:
+                conn.rollback()
+                conn.close()
+            return False
+
+    def get_file_processing_status(self, file_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the current processing status of a file
+
+        Returns:
+            Dict with status information or None if not found
+        """
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return None
+
+            cursor = conn.cursor()
+
+            query = """
+                SELECT id, file_name, cos_key, status, error_message, 
+                       job_run_name, processing_start_time, processing_end_time,
+                       archive_path, log_file_name, created_at, updated_at
+                FROM file_processing_status 
+                WHERE file_name = %s 
+                ORDER BY created_at DESC 
+                LIMIT 1
+            """
+
+            cursor.execute(query, (file_name,))
+            row = cursor.fetchone()
+
+            cursor.close()
+            conn.close()
+
+            if row:
+                return {
+                    "id": row[0],
+                    "file_name": row[1],
+                    "cos_key": row[2],
+                    "status": row[3],
+                    "error_message": row[4],
+                    "job_run_name": row[5],
+                    "processing_start_time": row[6],
+                    "processing_end_time": row[7],
+                    "archive_path": row[8],
+                    "log_file_name": row[9],
+                    "created_at": row[10],
+                    "updated_at": row[11],
+                }
+            return None
+
+        except Exception as e:
+            print_error(f"Error getting processing status for {file_name}: {str(e)}")
+            if conn:
+                conn.close()
+            return None
 
     def close(self):
         """Close any open database connections and cleanup resources"""
