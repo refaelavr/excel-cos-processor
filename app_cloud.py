@@ -770,6 +770,35 @@ class COSExcelProcessorComplete:
                         self.logger.info(f"Found filename in {var}: {value}")
                         return value
 
+            # Method 4: Check IBM Cloud Code Engine specific variables
+            # CE_SUBJECT contains the filename directly
+            ce_subject = os.getenv("CE_SUBJECT")
+            if ce_subject:
+                self.logger.info(f"Found filename in CE_SUBJECT: {ce_subject}")
+                if not ce_subject.startswith("archive/") and self._is_excel_file(
+                    ce_subject
+                ):
+                    return ce_subject
+
+            # Method 5: Parse CE_DATA (base64 encoded JSON)
+            ce_data = os.getenv("CE_DATA")
+            if ce_data:
+                self.logger.info(f"Found CE_DATA: {ce_data[:100]}...")
+                try:
+                    import base64
+
+                    decoded_data = base64.b64decode(ce_data).decode("utf-8")
+                    self.logger.info(f"Decoded CE_DATA: {decoded_data[:200]}...")
+
+                    event_json = json.loads(decoded_data)
+                    if "key" in event_json:
+                        key = event_json["key"]
+                        if not key.startswith("archive/") and self._is_excel_file(key):
+                            self.logger.info(f"Extracted filename from CE_DATA: {key}")
+                            return key
+                except Exception as e:
+                    self.logger.warning(f"Error parsing CE_DATA: {str(e)}")
+
             # Method 4: Debug - log all environment variables to understand what's available
             self.logger.info("Debug: All environment variables for trigger detection:")
             trigger_related_vars = [
