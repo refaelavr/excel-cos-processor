@@ -647,7 +647,7 @@ class COSExcelProcessorComplete:
         except Exception as e:
             self.logger.error(f"Error in archive process: {str(e)}")
 
-    def _archive_single_file_to_cos(self, filename: str):
+    def _archive_single_file_to_cos(self, cos_key: str):
         """Archive a single processed file to COS."""
         if self.environment != "prod" or not self.cos_client:
             return
@@ -656,6 +656,8 @@ class COSExcelProcessorComplete:
             archive_date = datetime.now().strftime("%Y%m%d")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+            # Extract filename from the full key for archival naming
+            filename = os.path.basename(cos_key)
             name_without_ext, ext = os.path.splitext(filename)
             archived_filename = f"{name_without_ext}_{timestamp}{ext}"
             archive_key = f"archive/{archive_date}/{archived_filename}"
@@ -664,14 +666,14 @@ class COSExcelProcessorComplete:
             self.cos_client.copy_object(
                 Bucket=self.bucket_name,
                 Key=archive_key,
-                CopySource={"Bucket": self.bucket_name, "Key": filename},
+                CopySource={"Bucket": self.bucket_name, "Key": cos_key},
             )
 
-            self.cos_client.delete_object(Bucket=self.bucket_name, Key=filename)
-            self.logger.info(f"Archived '{filename}' to '{archive_key}'")
+            self.cos_client.delete_object(Bucket=self.bucket_name, Key=cos_key)
+            self.logger.info(f"Archived '{cos_key}' to '{archive_key}'")
 
         except Exception as e:
-            self.logger.error(f"Error archiving {filename}: {str(e)}")
+            self.logger.error(f"Error archiving {cos_key}: {str(e)}")
 
     def _get_environment_info(self) -> Dict[str, str]:
         """Get environment information for logging."""
@@ -709,9 +711,9 @@ class COSExcelProcessorComplete:
                                 if key and not key.startswith("archive/"):
                                     filename = os.path.basename(key)
                                     self.logger.info(
-                                        f"Extracted filename from trigger: {filename}"
+                                        f"Extracted filename from trigger: {filename} (full path: {key})"
                                     )
-                                    return filename
+                                    return key
                     else:
                         self.logger.warning("No 'Records' found in trigger event data")
                 else:
@@ -752,13 +754,15 @@ class COSExcelProcessorComplete:
                                 key=lambda x: x["last_modified"], reverse=True
                             )
                             most_recent = excel_files[0]
-                            filename = os.path.basename(most_recent["key"])
+                            # Return the full key (path) instead of just filename
+                            full_key = most_recent["key"]
+                            filename = os.path.basename(full_key)
 
                             self.logger.info(
                                 f"Fallback: Found most recent file: {filename} "
-                                f"(modified: {most_recent['last_modified']})"
+                                f"(full path: {full_key}, modified: {most_recent['last_modified']})"
                             )
-                            return filename
+                            return full_key
                         else:
                             self.logger.info("Fallback: No Excel files found in bucket")
                     else:
@@ -890,48 +894,50 @@ class COSExcelProcessorComplete:
             self.logger.error(f"Error processing local file {file_path}: {str(e)}")
             return False
 
-    def _process_specific_cos_file(self, filename: str) -> bool:
+    def _process_specific_cos_file(self, cos_key: str) -> bool:
         """Download and process a specific file from COS."""
         try:
-            if not self._is_excel_file(filename):
-                self.logger.info(f"Ignoring non-Excel file: {filename}")
+            if not self._is_excel_file(cos_key):
+                self.logger.info(f"Ignoring non-Excel file: {cos_key}")
                 return True
 
             # Get file metadata
-            metadata = self._get_file_metadata(filename)
+            metadata = self._get_file_metadata(cos_key)
             if not metadata:
-                self.logger.error(f"Could not retrieve metadata for {filename}")
+                self.logger.error(f"Could not retrieve metadata for {cos_key}")
                 return False
 
             file_size = self._format_file_size(metadata["size"])
-            self.logger.info(f"Processing COS file: {filename} ({file_size})")
+            self.logger.info(f"Processing COS file: {cos_key} ({file_size})")
 
             # Setup temp directory and download specific file
             input_dir = self._setup_temp_processing_directory()
-            local_path = os.path.join(input_dir, filename)
+            # Use just the filename for local path, but full key for download
+            local_filename = os.path.basename(cos_key)
+            local_path = os.path.join(input_dir, local_filename)
 
-            # Download the specific file
+            # Download the specific file using the full COS key
             self.cos_client.download_file(
-                Bucket=self.bucket_name, Key=filename, Filename=local_path
+                Bucket=self.bucket_name, Key=cos_key, Filename=local_path
             )
 
             if not os.path.exists(local_path):
-                self.logger.error(f"Download failed for {filename}")
+                self.logger.error(f"Download failed for {cos_key}")
                 return False
 
-            self.logger.info(f"Downloaded {filename} for processing")
+            self.logger.info(f"Downloaded {cos_key} to {local_path}")
 
             # Process the single file using the same logic as local processing
             success = self._process_specific_local_file(local_path)
 
             if success:
                 # Archive the file in COS (server-side copy)
-                self._archive_single_file_to_cos(filename)
+                self._archive_single_file_to_cos(cos_key)
 
             return success
 
         except Exception as e:
-            self.logger.error(f"Error processing COS file {filename}: {str(e)}")
+            self.logger.error(f"Error processing COS file {cos_key}: {str(e)}")
             return False
         finally:
             # Cleanup temp directory
