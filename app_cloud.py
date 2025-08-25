@@ -573,8 +573,16 @@ class COSExcelProcessorComplete:
             self.logger.error(f"Error downloading Excel files: {str(e)}")
             return []
 
-    def _archive_processed_files_to_cos(self, processed_files: List[str]):
-        """Archive processed files back to COS under archive/ directory."""
+    def _archive_processed_files_to_cos(
+        self, processed_files: List[str], success: bool = True
+    ):
+        """
+        Archive processed files back to COS under archive/ directory.
+
+        Args:
+            processed_files: List of file paths that were processed
+            success: True if processing was successful, False if failed
+        """
         if not processed_files or self.environment != "prod" or not self.cos_client:
             if self.environment != "prod":
                 self.logger.info("Skipping COS archival (not in PROD mode)")
@@ -582,6 +590,7 @@ class COSExcelProcessorComplete:
 
         try:
             archive_date = datetime.now().strftime("%Y%m%d")
+            archive_folder = "success" if success else "failed"
 
             def find_original_key_by_basename(target_basename: str) -> Optional[str]:
                 continuation_token = None
@@ -616,7 +625,9 @@ class COSExcelProcessorComplete:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     name_without_ext, ext = os.path.splitext(original_filename)
                     archived_filename = f"{name_without_ext}_{timestamp}{ext}"
-                    archive_key = f"archive/{archive_date}/{archived_filename}"
+                    archive_key = (
+                        f"archive/{archive_date}/{archive_folder}/{archived_filename}"
+                    )
 
                     original_key = find_original_key_by_basename(original_filename)
 
@@ -633,9 +644,15 @@ class COSExcelProcessorComplete:
                         self.cos_client.delete_object(
                             Bucket=self.bucket_name, Key=original_key
                         )
-                        self.logger.info(
-                            f"Archived '{original_key}' to '{archive_key}'"
-                        )
+
+                        if success:
+                            self.logger.info(
+                                f"Successfully archived '{original_key}' to '{archive_key}'"
+                            )
+                        else:
+                            self.logger.warning(
+                                f"Archived failed file '{original_key}' to '{archive_key}'"
+                            )
                     else:
                         self.logger.warning(
                             f"Could not find original object to archive for '{original_filename}'"
@@ -647,8 +664,14 @@ class COSExcelProcessorComplete:
         except Exception as e:
             self.logger.error(f"Error in archive process: {str(e)}")
 
-    def _archive_single_file_to_cos(self, cos_key: str):
-        """Archive a single processed file to COS."""
+    def _archive_single_file_to_cos(self, cos_key: str, success: bool = True):
+        """
+        Archive a single processed file to COS.
+
+        Args:
+            cos_key: The COS key of the file to archive
+            success: True if processing was successful, False if failed
+        """
         if self.environment != "prod" or not self.cos_client:
             return
 
@@ -660,7 +683,14 @@ class COSExcelProcessorComplete:
             filename = os.path.basename(cos_key)
             name_without_ext, ext = os.path.splitext(filename)
             archived_filename = f"{name_without_ext}_{timestamp}{ext}"
-            archive_key = f"archive/{archive_date}/{archived_filename}"
+
+            # Choose archive folder based on success/failure
+            if success:
+                archive_key = f"archive/{archive_date}/success/{archived_filename}"
+                self.logger.info(f"Archiving successful processing: {cos_key}")
+            else:
+                archive_key = f"archive/{archive_date}/failed/{archived_filename}"
+                self.logger.warning(f"Archiving failed processing: {cos_key}")
 
             # Server-side copy then delete original
             self.cos_client.copy_object(
@@ -670,7 +700,15 @@ class COSExcelProcessorComplete:
             )
 
             self.cos_client.delete_object(Bucket=self.bucket_name, Key=cos_key)
-            self.logger.info(f"Archived '{cos_key}' to '{archive_key}'")
+
+            if success:
+                self.logger.info(
+                    f"Successfully archived '{cos_key}' to '{archive_key}'"
+                )
+            else:
+                self.logger.warning(
+                    f"Archived failed file '{cos_key}' to '{archive_key}'"
+                )
 
         except Exception as e:
             self.logger.error(f"Error archiving {cos_key}: {str(e)}")
@@ -990,9 +1028,8 @@ class COSExcelProcessorComplete:
             # Process the single file using the same logic as local processing
             success = self._process_specific_local_file(local_path)
 
-            if success:
-                # Archive the file in COS (server-side copy)
-                self._archive_single_file_to_cos(cos_key)
+            # Archive the file in COS (server-side copy) - always archive, but to different folders
+            self._archive_single_file_to_cos(cos_key, success=success)
 
             return success
 
@@ -1053,9 +1090,9 @@ class COSExcelProcessorComplete:
                     f"{stats.get('rows_processed', 0)} rows"
                 )
 
-                # Archive processed files (only in PROD mode with COS)
+                # Archive processed files to success folder (only in PROD mode with COS)
                 if self.environment == "prod":
-                    self._archive_processed_files_to_cos(excel_files)
+                    self._archive_processed_files_to_cos(excel_files, success=True)
                 else:
                     self.logger.info("TEST mode: Skipping COS archival")
 
@@ -1064,6 +1101,13 @@ class COSExcelProcessorComplete:
                 self.logger.error(
                     f"Excel processing failed: {results.get('error', 'Unknown error')}"
                 )
+
+                # Archive processed files to failed folder (only in PROD mode with COS)
+                if self.environment == "prod":
+                    self._archive_processed_files_to_cos(excel_files, success=False)
+                else:
+                    self.logger.info("TEST mode: Skipping COS archival")
+
                 return False
 
         except Exception as e:
