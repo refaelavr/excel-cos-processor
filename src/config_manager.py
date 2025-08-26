@@ -134,7 +134,7 @@ class ConfigManager:
                 print("Loading database config from environment variables")
 
                 ssl_cert_path = os.environ.get(
-                    "DB_SSLROOTCERT", "config/ibm-cloud-cert.crt"
+                    "DB_SSLROOTCERT", "/etc/certs/ibm-cloud-cert.crt"
                 )
 
                 self._db_config = DatabaseConfig(

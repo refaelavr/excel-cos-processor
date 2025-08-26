@@ -36,11 +36,11 @@ class COSService:
             if not api_key or not service_instance_id:
                 raise ValueError("COS credentials not configured")
 
-            # Create COS client
+            # Create COS client with IBM Cloud IAM authentication
             cos_client = boto3.client(
                 "s3",
                 endpoint_url=endpoint,
-                aws_access_key_id=api_key,
+                aws_access_key_id=service_instance_id,
                 aws_secret_access_key=api_key,
                 region_name="us-east-1",  # COS uses us-east-1 regardless of region
             )
