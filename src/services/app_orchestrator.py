@@ -69,17 +69,22 @@ class AppOrchestrator:
             from services.archive_service import ArchiveService
 
             bucket_name = os.getenv("COS_BUCKET_NAME", "")
+            self.logger.info(f"COS_BUCKET_NAME: {bucket_name}")
+
             if bucket_name:
                 self.cos_service = COSService(bucket_name, self.logger)
                 self.archive_service = ArchiveService(self.cos_service, self.logger)
                 self.logger.info("COS and Archive services initialized")
             else:
                 self.logger.warning("COS_BUCKET_NAME not configured")
+                self.cos_service = None
         except ImportError as e:
             self.logger.warning(f"Could not import COS service: {str(e)}")
             self.logger.info("Continuing without COS service")
+            self.cos_service = None
         except Exception as e:
             self.logger.error(f"Error initializing COS service: {str(e)}")
+            self.cos_service = None
 
     def _initialize_local_archive_service(self) -> None:
         """Initialize local archive service for test mode."""
@@ -144,6 +149,11 @@ class AppOrchestrator:
     def process_single_file(self, filename: str) -> int:
         """Process a single file based on environment."""
         try:
+            # Debug logging
+            self.logger.info(
+                f"Environment check: is_production()={is_production()}, cos_service={self.cos_service is not None}"
+            )
+
             if is_production() and self.cos_service:
                 # Production: Process from COS
                 self.logger.info(f"=== Production Mode: Processing COS File ===")
@@ -152,7 +162,9 @@ class AppOrchestrator:
             else:
                 # Test mode: Process local file
                 self.logger.info(f"=== Test Mode: Processing Local File ===")
-                file_path = os.path.join("data", "input", filename)
+                # Extract just the filename without path for local processing
+                local_filename = os.path.basename(filename)
+                file_path = os.path.join("data", "input", local_filename)
                 if not os.path.exists(file_path):
                     self.logger.error(f"File not found: {file_path}")
                     return 1

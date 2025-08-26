@@ -26,7 +26,7 @@ from utils.environment_utils import get_environment, get_job_info
 def main():
     """
     Main entry point - Application orchestration.
-    
+
     This function coordinates the application workflow.
     All business logic is delegated to specialized services.
     """
