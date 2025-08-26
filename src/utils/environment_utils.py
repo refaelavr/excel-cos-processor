@@ -36,10 +36,8 @@ def get_job_info() -> Dict[str, str]:
 
 def get_cos_endpoint() -> str:
     """Get COS endpoint based on environment."""
-    if is_production():
-        return os.getenv("COS_INTERNAL_ENDPOINT", "")
-    else:
-        return os.getenv("COS_ENDPOINT", "")
+    # Use COS_INTERNAL_ENDPOINT since it's available in the environment
+    return os.getenv("COS_INTERNAL_ENDPOINT", "")
 
 
 def mask_sensitive_value(value: str, mask_char: str = "*") -> str:

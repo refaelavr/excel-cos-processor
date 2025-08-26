@@ -73,7 +73,7 @@ class AppOrchestrator:
 
             # Debug all COS environment variables
             cos_vars = [
-                "COS_API_KEY",
+                "IAM_API_KEY",
                 "COS_INSTANCE_ID",
                 "COS_INTERNAL_ENDPOINT",
                 "COS_ENDPOINT",

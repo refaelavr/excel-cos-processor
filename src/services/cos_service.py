@@ -6,6 +6,7 @@ import os
 import ibm_boto3
 from typing import Optional, List, Dict, Any
 from botocore.exceptions import ClientError
+from botocore.config import Config
 from models.processing_result import FileMetadata
 from utils.environment_utils import get_cos_endpoint, is_production
 from utils.file_utils import is_excel_file, format_file_size
@@ -21,36 +22,39 @@ class COSService:
         self._test_connection()
 
     def _initialize_cos_client(self):
-        """Initialize COS client with proper configuration."""
+        """Initialize COS client with IAM authentication."""
         try:
-            endpoint = get_cos_endpoint()
-            if not endpoint:
-                raise ValueError("COS endpoint not configured")
+            # Use appropriate endpoint based on environment
+            if os.getenv("CE_JOB"):
+                endpoint = os.getenv(
+                    "COS_INTERNAL_ENDPOINT",
+                    "https://s3.private.eu-de.cloud-object-storage.appdomain.cloud",
+                )
+                self.logger.info("Using Code Engine private endpoint")
+            else:
+                endpoint = os.getenv(
+                    "COS_ENDPOINT",
+                    "https://s3.eu-de.cloud-object-storage.appdomain.cloud",
+                )
+                self.logger.info("Using public endpoint for local testing")
 
             self.logger.info(f"COS Endpoint: {endpoint}")
 
-            # Get credentials from environment
-            api_key = os.getenv("COS_API_KEY")
-            service_instance_id = os.getenv("COS_INSTANCE_ID")
-
-            if not api_key or not service_instance_id:
-                raise ValueError("COS credentials not configured")
-
-            # Debug logging (mask sensitive data)
-            self.logger.info(f"COS_INSTANCE_ID: {service_instance_id[:10]}...")
-            self.logger.info(
-                f"COS_API_KEY: {api_key[:10]}..." if api_key else "COS_API_KEY: Not set"
-            )
-
-            # Create COS client with IBM Cloud IAM authentication
+            # Create client with timeout configuration
             cos_client = ibm_boto3.client(
                 "s3",
+                ibm_api_key_id=os.getenv("IAM_API_KEY"),
+                ibm_service_instance_id=os.getenv("COS_INSTANCE_ID"),
+                config=Config(
+                    signature_version="oauth", connect_timeout=30, read_timeout=30
+                ),
                 endpoint_url=endpoint,
-                aws_access_key_id=service_instance_id,
-                aws_secret_access_key=api_key,
             )
 
-            self.logger.info("COS client initialized successfully")
+            self.logger.info(
+                f"Successfully initialized COS client with IAM authentication (Endpoint: {endpoint})"
+            )
+
             return cos_client
 
         except Exception as e:
