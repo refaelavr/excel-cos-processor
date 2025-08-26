@@ -181,10 +181,10 @@ class ExcelProcessingService:
 
             if config_key:
                 valid_files.append(file_path)
-                print_success(f"  ✓ Valid: '{file_name}' → '{config_key}'")
+                print_success(f"  Valid: '{file_name}' → '{config_key}'")
             else:
                 invalid_count += 1
-                print_warning(f"  ✗ Invalid: '{file_name}' (no matching configuration)")
+                print_warning(f"  Invalid: '{file_name}' (no matching configuration)")
 
         # Log validation summary
         print_normal(f"\nValidation Summary:")
