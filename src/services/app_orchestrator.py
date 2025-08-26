@@ -71,6 +71,24 @@ class AppOrchestrator:
             bucket_name = os.getenv("COS_BUCKET_NAME", "")
             self.logger.info(f"COS_BUCKET_NAME: {bucket_name}")
 
+            # Debug all COS environment variables
+            cos_vars = [
+                "COS_API_KEY",
+                "COS_INSTANCE_ID",
+                "COS_INTERNAL_ENDPOINT",
+                "COS_ENDPOINT",
+            ]
+            for var in cos_vars:
+                value = os.getenv(var, "")
+                if value:
+                    self.logger.info(
+                        f"{var}: {value[:10]}..."
+                        if len(value) > 10
+                        else f"{var}: {value}"
+                    )
+                else:
+                    self.logger.warning(f"{var}: Not set")
+
             if bucket_name:
                 self.cos_service = COSService(bucket_name, self.logger)
                 self.archive_service = ArchiveService(self.cos_service, self.logger)
