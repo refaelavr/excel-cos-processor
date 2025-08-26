@@ -36,6 +36,12 @@ class COSService:
             if not api_key or not service_instance_id:
                 raise ValueError("COS credentials not configured")
 
+            # Debug logging (mask sensitive data)
+            self.logger.info(f"COS_INSTANCE_ID: {service_instance_id[:10]}...")
+            self.logger.info(
+                f"COS_API_KEY: {api_key[:10]}..." if api_key else "COS_API_KEY: Not set"
+            )
+
             # Create COS client with IBM Cloud IAM authentication
             cos_client = ibm_boto3.client(
                 "s3",

@@ -1,16 +1,15 @@
 """
-File processing service that orchestrates the entire processing workflow.
+File processing service for orchestrating file operations.
 """
 
 import os
-import tempfile
-from typing import Optional
-from models.processing_result import ProcessingResult
+from datetime import datetime
+from typing import Optional, Tuple
+from models.processing_result import ProcessingResult, FileMetadata
 from utils.file_utils import (
+    get_filename_from_path,
     setup_temp_directory,
     cleanup_temp_directory,
-    get_filename_from_path,
-    format_file_size,
 )
 from utils.environment_utils import get_environment, is_production
 
@@ -30,72 +29,64 @@ class FileProcessingService:
         self.run_start_time = None
 
     def process_single_cos_file(self, cos_key: str) -> ProcessingResult:
-        """Process a single file from Cloud Object Storage."""
+        """Process a single file from COS."""
         from datetime import datetime
 
         start_time = datetime.now()
+        self.run_start_time = start_time
 
         try:
-            # Validate file
-            if not self._is_excel_file(cos_key):
-                return ProcessingResult(
-                    success=False,
-                    file_name=get_filename_from_path(cos_key),
-                    cos_key=cos_key,
-                    error_message="Not an Excel file",
-                )
+            filename = get_filename_from_path(cos_key)
+            self.logger.info(f"Processing COS file: {filename}")
 
             # Get file metadata
             metadata = self.cos_service.get_file_metadata(cos_key)
             if not metadata:
-                return ProcessingResult(
-                    success=False,
-                    file_name=get_filename_from_path(cos_key),
-                    cos_key=cos_key,
-                    error_message="Could not retrieve file metadata",
-                )
+                error_msg = f"Failed to get metadata for {cos_key}"
+                self.logger.error(error_msg)
 
-            file_size = format_file_size(metadata.size)
-            self.logger.info(f"Processing COS file: {cos_key} ({file_size})")
+                # Create failure record
+                self._create_processing_record(filename, cos_key, FileMetadata(size=0))
+                self._update_processing_status(filename, "failed", error_msg)
 
-            # Create processing status record
-            filename = get_filename_from_path(cos_key)
-            self._create_processing_record(filename, cos_key, metadata)
-
-            # Setup temp directory and download file
-            self.temp_dir = setup_temp_directory()
-            local_filename = get_filename_from_path(cos_key)
-            local_path = os.path.join(self.temp_dir, "input", local_filename)
-
-            # Download file
-            if not self.cos_service.download_file(cos_key, local_path):
-                self._update_processing_status(filename, "failed", "Download failed")
                 return ProcessingResult(
                     success=False,
                     file_name=filename,
                     cos_key=cos_key,
-                    error_message="Download failed",
+                    error_message=error_msg,
+                )
+
+            # Create initial processing record
+            self._create_processing_record(filename, cos_key, metadata)
+
+            # Download the file
+            temp_dir = setup_temp_directory()
+            local_path = os.path.join(temp_dir, filename)
+
+            if not self.cos_service.download_file(cos_key, local_path):
+                error_msg = f"Failed to download {cos_key}"
+                self.logger.error(error_msg)
+                self._update_processing_status(filename, "failed", error_msg)
+                return ProcessingResult(
+                    success=False,
+                    file_name=filename,
+                    cos_key=cos_key,
+                    error_message=error_msg,
                 )
 
             # Process the file
             success, processing_error = self._process_local_file(local_path)
 
-            # Archive the file (if archive service is available)
+            # Archive the file
             archive_path = None
             if self.archive_service:
                 archive_path = self.archive_service.archive_cos_file(cos_key, success)
-            else:
-                self.logger.warning(
-                    "Archive service not available - skipping archiving"
-                )
 
             # Update processing status
-            self._update_processing_status(
-                filename,
-                "success" if success else "failed",
-                processing_error,
-                archive_path,
-            )
+            if success:
+                self._update_processing_status(filename, "success", None, archive_path)
+            else:
+                self._update_processing_status(filename, "failed", processing_error)
 
             # Calculate processing time
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -113,6 +104,15 @@ class FileProcessingService:
         except Exception as e:
             error_msg = f"Unexpected error processing {cos_key}: {str(e)}"
             self.logger.error(error_msg)
+
+            # Create failure record if we have filename
+            try:
+                filename = get_filename_from_path(cos_key)
+                self._create_processing_record(filename, cos_key, FileMetadata(size=0))
+                self._update_processing_status(filename, "failed", error_msg)
+            except:
+                pass
+
             return ProcessingResult(
                 success=False,
                 file_name=get_filename_from_path(cos_key),
