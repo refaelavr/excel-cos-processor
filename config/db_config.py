@@ -21,5 +21,5 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", ""),
     "sslmode": os.getenv("DB_SSLMODE", "verify-full"),
     # Keep relative; callers normalize to absolute project path when needed
-    "sslrootcert": os.getenv("DB_SSLROOTCERT", "/app/config/ibm-cloud-cert.crt"),
+    "sslrootcert": os.getenv("DB_SSLROOTCERT", "/etc/certs/ibm-cloud-cert.crt"),
 }
