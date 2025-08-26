@@ -3,7 +3,7 @@ Cloud Object Storage service for file operations.
 """
 
 import os
-import boto3
+import ibm_boto3
 from typing import Optional, List, Dict, Any
 from botocore.exceptions import ClientError
 from models.processing_result import FileMetadata
@@ -37,12 +37,11 @@ class COSService:
                 raise ValueError("COS credentials not configured")
 
             # Create COS client with IBM Cloud IAM authentication
-            cos_client = boto3.client(
+            cos_client = ibm_boto3.client(
                 "s3",
                 endpoint_url=endpoint,
                 aws_access_key_id=service_instance_id,
                 aws_secret_access_key=api_key,
-                region_name="us-east-1",  # COS uses us-east-1 regardless of region
             )
 
             self.logger.info("COS client initialized successfully")
