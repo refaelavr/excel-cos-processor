@@ -184,11 +184,21 @@ class COSService:
             return None
 
         try:
-            # Create log object key with timestamp
-            from datetime import datetime
+            # Extract the relative path from the log file to preserve folder structure
+            from pathlib import Path
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            object_key = f"logs/excel_processor_{timestamp}.log"
+            log_path = Path(log_file_path)
+
+            # Get the relative path from the logs directory
+            if log_path.parts[0] == "logs" and len(log_path.parts) >= 3:
+                # Preserve the daily folder structure: logs/26082025/complete_excel_processor.log
+                object_key = f"logs/{log_path.parts[1]}/{log_path.parts[2]}"
+            else:
+                # Fallback: use timestamp if path structure is unexpected
+                from datetime import datetime
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                object_key = f"logs/excel_processor_{timestamp}.log"
 
             if self.upload_file(log_file_path, object_key):
                 self.logger.info(f"Uploaded run logs to '{object_key}'")

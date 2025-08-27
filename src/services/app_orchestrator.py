@@ -108,7 +108,7 @@ class AppOrchestrator:
         """Initialize local archive service for test mode."""
         try:
             self.logger.info("Attempting to initialize local archive service...")
-            from services.archive_service import ArchiveService
+            from src.services.archive_service import ArchiveService
 
             self.archive_service = ArchiveService(None, self.logger)
             self.logger.info("Local archive service initialized successfully")
@@ -123,11 +123,11 @@ class AppOrchestrator:
     def _initialize_excel_service(self) -> None:
         """Initialize Excel processing service."""
         try:
-            from config_manager import get_config
-            from excel_service import ExcelProcessingService
+            from src.config_manager import get_config
+            from src.excel_service import ExcelProcessingService
 
             config = get_config()
-            self.excel_service = ExcelProcessingService(config)
+            self.excel_service = ExcelProcessingService(config, self.logger)
             self.logger.info("Excel processing service initialized")
 
         except ImportError as e:

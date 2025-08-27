@@ -12,9 +12,8 @@ from datetime import datetime
 import shutil
 
 # Import from same directory (src/)
-from logger import print_success, print_error, print_warning, print_normal
-from config_manager import ConfigManager, get_config
-from extractors import (
+from src.config_manager import ConfigManager, get_config
+from src.extractors import (
     extract_key_values,
     extract_custom_tables_col_count,
     extract_no_title_tables_dynamic_headers,
@@ -33,8 +32,9 @@ class ExcelProcessingService:
     by cleaning the filename and matching against configuration keys.
     """
 
-    def __init__(self, config_manager: Optional[ConfigManager] = None):
+    def __init__(self, config_manager: Optional[ConfigManager] = None, logger=None):
         self.config = config_manager or get_config()
+        self.logger = logger
         self.processed_files = []
         self.processing_stats = {
             "files_processed": 0,
@@ -42,6 +42,12 @@ class ExcelProcessingService:
             "rows_processed": 0,
             "errors": 0,
         }
+
+        # Set logger for extractors functions
+        if logger:
+            from src.extractors import set_logger
+
+            set_logger(logger)
 
     def _clean_filename_from_date_patterns(self, filename: str) -> str:
         """
@@ -105,6 +111,21 @@ class ExcelProcessingService:
 
         return clean_name
 
+    def _log(self, message: str, level: str = "INFO") -> None:
+        """Log message using the main logging system if available."""
+        if hasattr(self, "logger") and self.logger:
+            if level == "INFO":
+                self.logger.info(message)
+            elif level == "SUCCESS":
+                self.logger.info(f"SUCCESS: {message}")
+            elif level == "WARNING":
+                self.logger.warning(message)
+            elif level == "ERROR":
+                self.logger.error(message)
+        else:
+            # Fallback to print if no logger available
+            print(f"[{level}] {message}")
+
     def _get_config_key_from_filename(self, filename: str) -> Optional[str]:
         """
         Resolve configuration key from filename using pattern-based cleaning.
@@ -126,19 +147,24 @@ class ExcelProcessingService:
         # Apply filename cleaning to remove temporal patterns
         clean_filename = self._clean_filename_from_date_patterns(filename)
 
-        print_normal(f"    Filename Analysis:")
-        print_normal(f"      Original: '{filename}'")
-        print_normal(f"      Cleaned:  '{clean_filename}'")
+        self._log(f"    Filename Analysis:", "INFO")
+        self._log(f"      Original: '{filename}'", "INFO")
+        self._log(f"      Cleaned:  '{clean_filename}'", "INFO")
 
         # Attempt direct configuration lookup
         if self.config.get_file_config(clean_filename):
-            print_success(f"      Result: Configuration found for '{clean_filename}'")
+            self._log(
+                f"      Result: Configuration found for '{clean_filename}'", "SUCCESS"
+            )
             return clean_filename
 
         # Configuration not found - file doesn't follow naming convention
-        print_warning(f"      Result: No configuration exists for '{clean_filename}'")
-        print_warning(
-            f"      Action: File will be skipped (naming convention not followed)"
+        self._log(
+            f"      Result: No configuration exists for '{clean_filename}'", "WARNING"
+        )
+        self._log(
+            f"      Action: File will be skipped (naming convention not followed)",
+            "WARNING",
         )
         return None
 
@@ -161,7 +187,7 @@ class ExcelProcessingService:
         # Ensure input directory exists
         if not os.path.exists(input_dir):
             os.makedirs(input_dir)
-            print_normal(f"Created input directory: {input_dir}")
+            self._log(f"Created input directory: {input_dir}", "INFO")
             return []
 
         # Scan for Excel files
@@ -171,18 +197,18 @@ class ExcelProcessingService:
                 excel_files.append(os.path.join(input_dir, filename))
 
         if not excel_files:
-            print_normal("File Discovery: No Excel files found in input directory")
+            self._log("File Discovery: No Excel files found in input directory", "INFO")
             return []
 
-        print_normal(f"File Discovery: Found {len(excel_files)} Excel files")
+        self._log(f"File Discovery: Found {len(excel_files)} Excel files", "INFO")
         for file_path in excel_files:
-            print_normal(f"  - {os.path.basename(file_path)}")
+            self._log(f"  - {os.path.basename(file_path)}", "INFO")
 
         # Validate files against configuration
         valid_files = []
         invalid_count = 0
 
-        print_normal(f"\nFile Validation: Checking configuration mappings")
+        self._log(f"\nFile Validation: Checking configuration mappings", "INFO")
 
         for file_path in excel_files:
             file_name = os.path.basename(file_path)
@@ -192,35 +218,38 @@ class ExcelProcessingService:
 
             if config_key:
                 valid_files.append(file_path)
-                print_success(f"  Valid: '{file_name}' → '{config_key}'")
+                self._log(f"  Valid: '{file_name}' → '{config_key}'", "SUCCESS")
             else:
                 invalid_count += 1
-                print_warning(f"  Invalid: '{file_name}' (no matching configuration)")
+                self._log(
+                    f"  Invalid: '{file_name}' (no matching configuration)", "WARNING"
+                )
 
         # Log validation summary
-        print_normal(f"\nValidation Summary:")
-        print_normal(f"  Total Files Scanned: {len(excel_files)}")
-        print_success(f"  Valid Files: {len(valid_files)}")
+        self._log(f"\nValidation Summary:", "INFO")
+        self._log(f"  Total Files Scanned: {len(excel_files)}", "INFO")
+        self._log(f"  Valid Files: {len(valid_files)}", "SUCCESS")
 
         if invalid_count > 0:
-            print_warning(f"  Invalid Files: {invalid_count}")
-            print_warning(
-                f"  Note: Invalid files don't follow naming conventions and will be ignored"
+            self._log(f"  Invalid Files: {invalid_count}", "WARNING")
+            self._log(
+                f"  Note: Invalid files don't follow naming conventions and will be ignored",
+                "WARNING",
             )
         else:
-            print_success(f"  All files follow naming conventions")
+            self._log(f"  All files follow naming conventions", "SUCCESS")
 
         return valid_files
 
     def process_all_files(self) -> Dict[str, Any]:
         """Main entry point - process all Excel files"""
         try:
-            print_normal("=== Starting Excel File Processing ===")
+            self._log("=== Starting Excel File Processing ===", "INFO")
 
             # Get valid Excel files using intelligent discovery
             excel_files = self._get_valid_excel_files()
             if not excel_files:
-                print_warning("No valid Excel files found to process")
+                self._log("No valid Excel files found to process", "WARNING")
                 return self._build_result(success=True, message="No files to process")
 
             # Process each file
@@ -237,14 +266,14 @@ class ExcelProcessingService:
                         self._archive_processed_file(file_path)
 
                 except Exception as e:
-                    print_error(f"Error processing file {file_path}: {str(e)}")
+                    self._log(f"Error processing file {file_path}: {str(e)}", "ERROR")
                     self.processing_stats["errors"] += 1
                     results[file_path] = {"success": False, "error": str(e)}
 
             # Process merge operations
             merge_results = self._process_merge_operations(tables_for_merge)
 
-            print_success(f"Processing completed: {self.processing_stats}")
+            self._log(f"Processing completed: {self.processing_stats}", "SUCCESS")
 
             return self._build_result(
                 success=True,
@@ -255,7 +284,7 @@ class ExcelProcessingService:
             )
 
         except Exception as e:
-            print_error(f"Fatal error in Excel processing: {str(e)}")
+            self._log(f"Fatal error in Excel processing: {str(e)}", "ERROR")
             self.processing_stats["errors"] += 1
             return self._build_result(success=False, error=str(e))
 
@@ -265,7 +294,7 @@ class ExcelProcessingService:
         """Process a single Excel file using intelligent filename mapping"""
         file_name = os.path.basename(file_path)
 
-        print_normal(f"\nProcessing File: {file_name}")
+        self._log(f"\nProcessing File: {file_name}", "INFO")
 
         # Get configuration key using intelligent pattern matching
         config_key = self._get_config_key_from_filename(file_name)
@@ -277,7 +306,7 @@ class ExcelProcessingService:
         if not file_config:
             raise ValueError(f"Configuration missing for resolved key: {config_key}")
 
-        print_normal(f"  Using Configuration: '{config_key}'")
+        self._log(f"  Using Configuration: '{config_key}'", "INFO")
 
         try:
             # Load Excel file
@@ -304,7 +333,7 @@ class ExcelProcessingService:
                     )
 
                 except Exception as e:
-                    print_error(f"Error processing sheet {sheet_name}: {str(e)}")
+                    self._log(f"Error processing sheet {sheet_name}: {str(e)}", "ERROR")
                     file_results["sheets"][sheet_name] = {
                         "success": False,
                         "error": str(e),
@@ -330,7 +359,7 @@ class ExcelProcessingService:
         if sheet_name not in xl.sheet_names:
             raise ValueError(f"Sheet '{sheet_name}' not found in file")
 
-        print_normal(f"  Processing sheet: {sheet_name}")
+        self._log(f"  Processing sheet: {sheet_name}", "INFO")
 
         # Load sheet data
         df = xl.parse(sheet_name, header=None)
@@ -343,8 +372,8 @@ class ExcelProcessingService:
         # This allows other sheets to use key_values from previous sheets
         if key_values:
             file_level_key_values.update(key_values)
-            print_normal(
-                f"    Updated file-level key_values: {list(key_values.keys())}"
+            self._log(
+                f"    Updated file-level key_values: {list(key_values.keys())}", "INFO"
             )
 
         # Determine data date for flattening operations
@@ -357,22 +386,23 @@ class ExcelProcessingService:
                     report_date_str, "%d/%m/%Y"
                 )
             except Exception as e:
-                print_warning(
-                    f"    Failed to parse report_date '{report_date_str}': {str(e)}"
+                self._log(
+                    f"    Failed to parse report_date '{report_date_str}': {str(e)}",
+                    "WARNING",
                 )
                 data_date_for_flattening = datetime.now()
         else:
             data_date_for_flattening = datetime.now()
 
-        print_normal("    Key Values extracted:")
+        self._log("    Key Values extracted:", "INFO")
         for k, v in key_values.items():
-            print_normal(f"      {k}: {v}")
+            self._log(f"      {k}: {v}", "INFO")
 
         # Show file-level key_values if different from sheet key_values
         if file_level_key_values != key_values:
-            print_normal("    File-level key_values available:")
+            self._log("    File-level key_values available:", "INFO")
             for k, v in file_level_key_values.items():
-                print_normal(f"      {k}: {v}")
+                self._log(f"      {k}: {v}", "INFO")
 
         sheet_result = {
             "success": True,
@@ -435,7 +465,7 @@ class ExcelProcessingService:
             table = tables.get(title)
 
             if table is not None:
-                print_normal(f"    Table '{title}': Found ({len(table)} rows)")
+                self._log(f"    Table '{title}': Found ({len(table)} rows)", "INFO")
 
                 # Process table
                 processed_table = self._process_table_data(
@@ -460,7 +490,7 @@ class ExcelProcessingService:
                 self.processing_stats["rows_processed"] += len(processed_table)
                 tables_processed += 1
             else:
-                print_warning(f"    Table '{title}': Not found")
+                self._log(f"    Table '{title}': Not found", "WARNING")
 
         return tables_processed
 
@@ -500,10 +530,12 @@ class ExcelProcessingService:
             )
 
             if table is None:
-                print_warning(f"    No-title table '{title}': Not found")
+                self._log(f"    No-title table '{title}': Not found", "WARNING")
                 continue
 
-            print_normal(f"    No-title table '{title}': Found ({len(table)} rows)")
+            self._log(
+                f"    No-title table '{title}': Found ({len(table)} rows)", "INFO"
+            )
 
             # Check if this table needs merging
             if no_title_table.get("merge_with"):
@@ -517,8 +549,9 @@ class ExcelProcessingService:
                     "merge_on": no_title_table.get("merge_on"),
                     "config": no_title_table,
                 }
-                print_normal(
-                    f"      Stored for merging with '{no_title_table['merge_with']}'"
+                self._log(
+                    f"      Stored for merging with '{no_title_table['merge_with']}'",
+                    "INFO",
                 )
             else:
                 # Process table immediately
@@ -566,12 +599,14 @@ class ExcelProcessingService:
             processed_table = add_key_values_to_table(
                 processed_table, key_values, key_values_def
             )
-            print_normal("      Added key values")
+            self._log("      Added key values", "INFO")
 
         # Apply calculated columns
         calculated_columns = table_config.get("calculated_columns")
         if calculated_columns:
-            print_normal(f"      Applying {len(calculated_columns)} calculated columns")
+            self._log(
+                f"      Applying {len(calculated_columns)} calculated columns", "INFO"
+            )
             processed_table = apply_calculated_columns(
                 processed_table, calculated_columns
             )
@@ -579,7 +614,7 @@ class ExcelProcessingService:
         # Rename columns according to headers config
         custom_headers = table_config.get("headers")
         if custom_headers:
-            print_normal("      Renaming columns according to headers config")
+            self._log("      Renaming columns according to headers config", "INFO")
             processed_table = rename_table_columns(processed_table, custom_headers)
 
         # Add data date using file-level key_values (for shared report_date)
@@ -593,14 +628,16 @@ class ExcelProcessingService:
                     date_obj = datetime.strptime(data_date, "%d/%m/%Y")
                     formatted_date = date_obj.strftime("%Y-%m-%d")
                     processed_table["date"] = [formatted_date] * len(processed_table)
-                    print_normal(
-                        f"      Added date column: {formatted_date} (from file-level key_values)"
+                    self._log(
+                        f"      Added date column: {formatted_date} (from file-level key_values)",
+                        "INFO",
                     )
                 except Exception as e:
-                    print_warning(f"      Failed to add date column: {str(e)}")
+                    self._log(f"      Failed to add date column: {str(e)}", "WARNING")
             else:
-                print_warning(
-                    "      Cannot add date column: no report_date found in key_values"
+                self._log(
+                    "      Cannot add date column: no report_date found in key_values",
+                    "WARNING",
                 )
 
         return processed_table
@@ -619,7 +656,7 @@ class ExcelProcessingService:
             error_msg = (
                 f"WARNING: '{title}' marked for DB export but no primary_keys defined!"
             )
-            print_warning(f"      {error_msg}")
+            self._log(f"      {error_msg}", "WARNING")
             return False, error_msg
 
         try:
@@ -636,28 +673,31 @@ class ExcelProcessingService:
             )
 
             if success:
-                print_success(f"      Successfully exported '{title}' to database")
+                self._log(
+                    f"      Successfully exported '{title}' to database", "SUCCESS"
+                )
                 return True, ""
             else:
-                print_error(
-                    f"      Failed to export '{title}' to database: {error_msg}"
+                self._log(
+                    f"      Failed to export '{title}' to database: {error_msg}",
+                    "ERROR",
                 )
                 self.processing_stats["errors"] += 1
                 return False, error_msg
 
         except Exception as e:
             error_msg = f"Database export error for '{title}': {str(e)}"
-            print_error(f"      {error_msg}")
+            self._log(f"      {error_msg}", "ERROR")
             self.processing_stats["errors"] += 1
             return False, error_msg
 
     def _process_merge_operations(self, tables_for_merge: Dict) -> Dict[str, Any]:
         """Process all table merge operations"""
         if not tables_for_merge:
-            print_normal("No tables require merging")
+            self._log("No tables require merging", "INFO")
             return {"merges_processed": 0}
 
-        print_normal("\n=== Processing Table Merges ===")
+        self._log("\n=== Processing Table Merges ===", "INFO")
 
         processed_merges = set()
         merge_results = {"merges_processed": 0, "errors": 0}
@@ -675,10 +715,10 @@ class ExcelProcessingService:
             if merge_id in processed_merges:
                 continue  # Already processed
 
-            print_normal(f"\nProcessing merge: {title}")
-            print_normal(f"  File 1: {file_name}")
-            print_normal(f"  File 2: {merge_with_file}")
-            print_normal(f"  Merge on: {merge_on}")
+            self._log(f"\nProcessing merge: {title}", "INFO")
+            self._log(f"  File 1: {file_name}", "INFO")
+            self._log(f"  File 2: {merge_with_file}", "INFO")
+            self._log(f"  Merge on: {merge_on}", "INFO")
 
             # Find partner table
             partner_info = self._find_merge_partner(
@@ -686,7 +726,7 @@ class ExcelProcessingService:
             )
 
             if partner_info is None:
-                print_error("  ERROR: Partner table not found")
+                self._log("  ERROR: Partner table not found", "ERROR")
                 merge_results["errors"] += 1
                 continue
 
@@ -707,8 +747,9 @@ class ExcelProcessingService:
                     all_calc_cols = calc_cols_1 + calc_cols_2
 
                     if all_calc_cols:
-                        print_normal(
-                            f"  Applying {len(all_calc_cols)} calculated columns to merged table"
+                        self._log(
+                            f"  Applying {len(all_calc_cols)} calculated columns to merged table",
+                            "INFO",
                         )
                         merged_table = apply_calculated_columns(
                             merged_table, all_calc_cols
@@ -722,13 +763,13 @@ class ExcelProcessingService:
 
                     processed_merges.add(merge_id)
                     merge_results["merges_processed"] += 1
-                    print_success(f"  Merge completed successfully")
+                    self._log(f"  Merge completed successfully", "SUCCESS")
                 else:
-                    print_error(f"  ERROR: Merge failed")
+                    self._log(f"  ERROR: Merge failed", "ERROR")
                     merge_results["errors"] += 1
 
             except Exception as e:
-                print_error(f"  ERROR: Merge operation failed: {str(e)}")
+                self._log(f"  ERROR: Merge operation failed: {str(e)}", "ERROR")
                 merge_results["errors"] += 1
 
         return merge_results
@@ -773,8 +814,9 @@ class ExcelProcessingService:
             primary_keys = primary_keys_1 or primary_keys_2
 
             if not primary_keys:
-                print_warning(
-                    "  WARNING: Merged table marked for DB export but no primary_keys found!"
+                self._log(
+                    "  WARNING: Merged table marked for DB export but no primary_keys found!",
+                    "WARNING",
                 )
                 return
 
@@ -790,12 +832,14 @@ class ExcelProcessingService:
             success = db_service.export_table(merged_table, merged_title, primary_keys)
 
             if success:
-                print_success(f"  Successfully exported merged table to database")
+                self._log(
+                    f"  Successfully exported merged table to database", "SUCCESS"
+                )
             else:
-                print_error(f"  Failed to export merged table to database")
+                self._log(f"  Failed to export merged table to database", "ERROR")
 
         except Exception as e:
-            print_error(f"  Error exporting merged table: {str(e)}")
+            self._log(f"  Error exporting merged table: {str(e)}", "ERROR")
 
     def _archive_processed_file(self, file_path: str):
         """Move processed file to archive directory"""
@@ -811,11 +855,11 @@ class ExcelProcessingService:
             dest_path = os.path.join(archive_dir, new_filename)
 
             shutil.move(file_path, dest_path)
-            print_success(f"Archived file to: {dest_path}")
+            self._log(f"Archived file to: {dest_path}", "SUCCESS")
             self.processed_files.append(dest_path)
 
         except Exception as e:
-            print_error(f"Error archiving file {file_path}: {str(e)}")
+            self._log(f"Error archiving file {file_path}: {str(e)}", "ERROR")
 
     def _build_result(
         self, success: bool, message: str = "", **kwargs
