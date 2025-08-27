@@ -1,6 +1,43 @@
 import os
 import pandas as pd
-from logger import print_success, print_error, print_warning, print_normal
+
+
+# Global logger for extractors
+_logger = None
+
+
+def set_logger(logger):
+    """Set the logger for extractors functions."""
+    global _logger
+    _logger = logger
+
+
+def print_success(msg):
+    if _logger:
+        _logger.info(f"SUCCESS: {msg}")
+    else:
+        print(f"SUCCESS: {msg}")
+
+
+def print_error(msg):
+    if _logger:
+        _logger.error(msg)
+    else:
+        print(f"ERROR: {msg}")
+
+
+def print_warning(msg):
+    if _logger:
+        _logger.warning(msg)
+    else:
+        print(f"WARNING: {msg}")
+
+
+def print_normal(msg):
+    if _logger:
+        _logger.info(msg)
+    else:
+        print(msg)
 
 
 def parse_hebrew_month_date(hebrew_date_str):
@@ -54,11 +91,11 @@ def parse_hebrew_month_date(hebrew_date_str):
         elif " " in hebrew_date_str:
             parts = hebrew_date_str.split(" ")
         else:
-            print_warning(f"Could not parse Hebrew date format: {hebrew_date_str}")
+            print(f"WARNING: Could not parse Hebrew date format: {hebrew_date_str}")
             return None
 
         if len(parts) != 2:
-            print_warning(f"Unexpected Hebrew date format: {hebrew_date_str}")
+            print(f"WARNING: Unexpected Hebrew date format: {hebrew_date_str}")
             return None
 
         month_part = parts[1].strip()
@@ -67,20 +104,20 @@ def parse_hebrew_month_date(hebrew_date_str):
         # Look up month
         month_num = hebrew_months.get(month_part)
         if not month_num:
-            print_warning(f"Unknown Hebrew month: {month_part}")
+            print(f"WARNING: Unknown Hebrew month: {month_part}")
             return None
 
         # Validate and format year
         if not year_part.isdigit() or len(year_part) != 4:
-            print_warning(f"Invalid year format: {year_part}")
+            print(f"WARNING: Invalid year format: {year_part}")
             return None
 
         result = f"{year_part}-{month_num}-01"
-        print_normal(f"      Converted Hebrew date '{hebrew_date_str}' to '{result}'")
+        print(f"      Converted Hebrew date '{hebrew_date_str}' to '{result}'")
         return result
 
     except Exception as e:
-        print_warning(f"Error parsing Hebrew date '{hebrew_date_str}': {str(e)}")
+        print(f"WARNING: Error parsing Hebrew date '{hebrew_date_str}': {str(e)}")
         return None
 
 
