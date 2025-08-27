@@ -80,12 +80,12 @@ class ExcelProcessingService:
         clean_name = re.sub(r"_\d{8}_\d{6}$", "", clean_name)
 
         # Step 3: Remove date-time patterns at the end
-        # Matches: DD-MM-YYYY HH-MM-SS or DD-MM-YYYY HH:MM:SS
+        # Matches: DD-MM-YYYY HH-MM-SS or DD-MM-YYYY HH:MM:SS (with or without leading space)
         clean_name = re.sub(
-            r"\s+\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}-\d{1,2}-\d{1,2}$", "", clean_name
+            r"\s*\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}-\d{1,2}-\d{1,2}$", "", clean_name
         )
         clean_name = re.sub(
-            r"\s+\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{1,2}:\d{1,2}$", "", clean_name
+            r"\s*\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{1,2}:\d{1,2}$", "", clean_name
         )
 
         # Step 4: Remove date patterns at end (without time)
