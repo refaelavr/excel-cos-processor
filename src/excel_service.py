@@ -54,6 +54,7 @@ class ExcelProcessingService:
         - File extensions: .xlsx, .xls
         - Timestamps: _YYYYMMDD_HHMMSS (e.g., _20240815_143022)
         - Date formats: DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY
+        - Time formats: HH-MM-SS, HH:MM:SS
         - Standalone numbers: 13.7, 2024, etc.
 
         Args:
@@ -66,6 +67,7 @@ class ExcelProcessingService:
             "דוח העדרויות נהגים מסכם 13.7.xlsx" → "דוח העדרויות נהגים מסכם"
             "vm_analysis_20240815_143022.xlsx" → "vm_analysis"
             "ניתוח קנסות VM 2024.xlsx" → "ניתוח קנסות VM"
+            "סטטוס אי ביצוע בזמן אמת - YIT - נתונים להיום26-08-2025 21-15-00.xlsx" → "סטטוס אי ביצוע בזמן אמת - YIT - נתונים להיום"
         """
         clean_name = filename
 
@@ -77,19 +79,28 @@ class ExcelProcessingService:
         # Common in automated file generation systems
         clean_name = re.sub(r"_\d{8}_\d{6}$", "", clean_name)
 
-        # Step 3: Remove full date patterns at end
+        # Step 3: Remove date-time patterns at the end
+        # Matches: DD-MM-YYYY HH-MM-SS or DD-MM-YYYY HH:MM:SS
+        clean_name = re.sub(
+            r"\s+\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}-\d{1,2}-\d{1,2}$", "", clean_name
+        )
+        clean_name = re.sub(
+            r"\s+\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{1,2}:\d{1,2}$", "", clean_name
+        )
+
+        # Step 4: Remove date patterns at end (without time)
         # Matches: DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY with optional leading space
         clean_name = re.sub(
             r"\s*\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}$", "", clean_name
         )
 
-        # Step 4: Remove standalone numbers/partial dates at end
+        # Step 5: Remove standalone numbers/partial dates at end
         # Matches patterns like: " 13.7", " 2024", " 15", " 13/8"
         clean_name = re.sub(
             r"\s+\d{1,4}[\.\-\/]?\d{0,2}[\.\-\/]?\d{0,4}$", "", clean_name
         )
 
-        # Step 5: Clean up extra whitespace
+        # Step 6: Clean up extra whitespace
         clean_name = clean_name.strip()
 
         return clean_name
