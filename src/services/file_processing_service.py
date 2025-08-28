@@ -190,28 +190,45 @@ class FileProcessingService:
 
                     if file_results.get("success", False):
                         tables_count = file_results.get("tables_count", 0)
-                        self.logger.info(
-                            f"Excel processing completed successfully for: {filename}"
-                        )
-                        self.logger.info(
-                            f"Processed {tables_count} tables from file: {filename}"
-                        )
 
-                        # Log details about processed sheets
-                        sheets = file_results.get("sheets", {})
-                        for sheet_name, sheet_result in sheets.items():
-                            if sheet_result.get("success", False):
-                                sheet_tables = sheet_result.get("tables_processed", 0)
-                                self.logger.info(
-                                    f"  Sheet '{sheet_name}': {sheet_tables} tables processed"
-                                )
-                            else:
-                                error = sheet_result.get("error", "Unknown error")
-                                self.logger.warning(
-                                    f"  Sheet '{sheet_name}': Failed - {error}"
-                                )
+                        # Check for database errors
+                        has_database_errors = file_results.get("database_errors", [])
 
-                        return True, None
+                        if has_database_errors:
+                            self.logger.error(
+                                f"Excel processing completed with database errors for: {filename}"
+                            )
+                            for error in has_database_errors:
+                                self.logger.error(f"  Database error: {error}")
+                            return (
+                                False,
+                                f"Database errors: {', '.join(has_database_errors)}",
+                            )
+                        else:
+                            self.logger.info(
+                                f"Excel processing completed successfully for: {filename}"
+                            )
+                            self.logger.info(
+                                f"Processed {tables_count} tables from file: {filename}"
+                            )
+
+                            # Log details about processed sheets
+                            sheets = file_results.get("sheets", {})
+                            for sheet_name, sheet_result in sheets.items():
+                                if sheet_result.get("success", False):
+                                    sheet_tables = sheet_result.get(
+                                        "tables_processed", 0
+                                    )
+                                    self.logger.info(
+                                        f"  Sheet '{sheet_name}': {sheet_tables} tables processed"
+                                    )
+                                else:
+                                    error = sheet_result.get("error", "Unknown error")
+                                    self.logger.warning(
+                                        f"  Sheet '{sheet_name}': Failed - {error}"
+                                    )
+
+                            return True, None
                     else:
                         error_msg = f"Excel processing failed for {filename}"
                         self.logger.error(error_msg)

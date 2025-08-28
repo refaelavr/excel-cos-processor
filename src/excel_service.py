@@ -262,8 +262,16 @@ class ExcelProcessingService:
                     results[file_path] = file_result
                     self.processing_stats["files_processed"] += 1
 
-                    if file_result["success"]:
+                    # Only archive if processing was successful AND no database errors
+                    if file_result["success"] and not file_result.get(
+                        "database_errors", []
+                    ):
                         self._archive_processed_file(file_path)
+                    elif file_result.get("database_errors", []):
+                        self._log(
+                            f"Not archiving file due to database errors: {os.path.basename(file_path)}",
+                            "WARNING",
+                        )
 
                 except Exception as e:
                     self._log(f"Error processing file {file_path}: {str(e)}", "ERROR")
@@ -273,11 +281,33 @@ class ExcelProcessingService:
             # Process merge operations
             merge_results = self._process_merge_operations(tables_for_merge)
 
-            self._log(f"Processing completed: {self.processing_stats}", "SUCCESS")
+            # Check if there were any database errors
+            has_database_errors = any(
+                file_result.get("database_errors", [])
+                for file_result in results.values()
+            )
+
+            # Determine overall success based on errors
+            overall_success = (
+                self.processing_stats["errors"] == 0 and not has_database_errors
+            )
+
+            if overall_success:
+                self._log(
+                    f"Processing completed successfully: {self.processing_stats}",
+                    "SUCCESS",
+                )
+                message = "Processing completed successfully"
+            else:
+                self._log(
+                    f"Processing completed with errors: {self.processing_stats}",
+                    "ERROR",
+                )
+                message = f"Processing completed with {self.processing_stats['errors']} errors"
 
             return self._build_result(
-                success=True,
-                message="Processing completed successfully",
+                success=overall_success,
+                message=message,
                 file_results=results,
                 merge_results=merge_results,
                 stats=self.processing_stats,
@@ -316,6 +346,9 @@ class ExcelProcessingService:
             # Store file-level key_values (shared across all sheets in file)
             file_level_key_values = {}
 
+            # Initialize file-level database errors collection
+            file_database_errors = []
+
             # Process each configured sheet
             for sheet_name, sheet_config in file_config.items():
                 try:
@@ -332,6 +365,11 @@ class ExcelProcessingService:
                         "tables_processed", 0
                     )
 
+                    # Collect database errors from this sheet
+                    sheet_database_errors = sheet_result.get("database_errors", [])
+                    if sheet_database_errors:
+                        file_database_errors.extend(sheet_database_errors)
+
                 except Exception as e:
                     self._log(f"Error processing sheet {sheet_name}: {str(e)}", "ERROR")
                     file_results["sheets"][sheet_name] = {
@@ -339,6 +377,9 @@ class ExcelProcessingService:
                         "error": str(e),
                     }
                     self.processing_stats["errors"] += 1
+
+            # Add file-level database errors to results
+            file_results["database_errors"] = file_database_errors
 
             return file_results
 
