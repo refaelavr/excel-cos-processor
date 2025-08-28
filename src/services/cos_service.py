@@ -184,21 +184,26 @@ class COSService:
             return None
 
         try:
+            self.logger.info(f"Uploading log file: {log_file_path}")
+
             # Extract the relative path from the log file to preserve folder structure
             from pathlib import Path
 
             log_path = Path(log_file_path)
+            self.logger.info(f"Log path parts: {log_path.parts}")
 
             # Get the relative path from the logs directory
-            if log_path.parts[0] == "logs" and len(log_path.parts) >= 3:
-                # Preserve the daily folder structure: logs/26082025/complete_excel_processor.log
-                object_key = f"logs/{log_path.parts[1]}/{log_path.parts[2]}"
+            if log_path.parts[0] == "logs" and len(log_path.parts) >= 2:
+                # Preserve the daily folder structure: logs/20250828/filename.log
+                object_key = "/".join(log_path.parts)
             else:
                 # Fallback: use timestamp if path structure is unexpected
                 from datetime import datetime
 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 object_key = f"logs/excel_processor_{timestamp}.log"
+
+            self.logger.info(f"Uploading to object key: {object_key}")
 
             if self.upload_file(log_file_path, object_key):
                 self.logger.info(f"Uploaded run logs to '{object_key}'")
@@ -209,4 +214,7 @@ class COSService:
 
         except Exception as e:
             self.logger.error(f"Failed to upload logs to COS: {str(e)}")
+            import traceback
+
+            self.logger.error(f"Upload error details: {traceback.format_exc()}")
             return None

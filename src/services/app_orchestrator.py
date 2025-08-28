@@ -299,12 +299,30 @@ class AppOrchestrator:
             from pathlib import Path
             from datetime import datetime
 
-            today = datetime.now().strftime("%d%m%Y")
+            today = datetime.now().strftime("%Y%m%d")
             log_dir = Path("logs") / today
-            log_file = log_dir / "complete_excel_processor.log"
 
-            if log_file.exists():
-                self.cos_service.upload_logs(str(log_file))
+            if log_dir.exists():
+                log_files = list(log_dir.glob("*.log"))
+                if log_files:
+                    # Get the most recent log file
+                    latest_log = max(log_files, key=lambda p: p.stat().st_mtime)
+                    self.logger.info(f"Uploading log file to COS: {latest_log}")
+
+                    if latest_log.exists():
+                        self.cos_service.upload_logs(str(latest_log))
+                        self.logger.info(
+                            f"Successfully uploaded log file: {latest_log}"
+                        )
+                    else:
+                        self.logger.error(f"Log file does not exist: {latest_log}")
+                else:
+                    self.logger.warning("No log files found to upload")
+            else:
+                self.logger.warning(f"Log directory does not exist: {log_dir}")
 
         except Exception as e:
             self.logger.error(f"Error uploading logs: {str(e)}")
+            import traceback
+
+            self.logger.error(f"Upload error details: {traceback.format_exc()}")
