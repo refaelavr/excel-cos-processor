@@ -244,7 +244,33 @@ class AppOrchestrator:
             file_logger.capture_all_output()
 
             # Process the file
-            return self.process_single_file(filename)
+            result = self.process_single_file(filename)
+
+            # Check if log file exists and has content
+            try:
+                from pathlib import Path
+                from datetime import datetime
+
+                today = datetime.now().strftime("%Y%m%d")
+                log_dir = Path("logs") / today
+
+                if log_dir.exists():
+                    log_files = list(log_dir.glob("*.log"))
+                    if log_files:
+                        latest_log = max(log_files, key=lambda p: p.stat().st_mtime)
+                        self.logger.info(f"Latest log file: {latest_log}")
+                        if latest_log.exists():
+                            log_size = latest_log.stat().st_size
+                            self.logger.info(f"Log file size: {log_size} bytes")
+                        else:
+                            self.logger.warning("Log file does not exist!")
+                    else:
+                        self.logger.warning("No log files found in directory!")
+
+            except Exception as log_check_error:
+                self.logger.error(f"Error checking log files: {log_check_error}")
+
+            return result
 
         except Exception as e:
             self.logger.error(f"Unexpected error: {str(e)}")

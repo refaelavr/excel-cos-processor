@@ -150,7 +150,29 @@ class LoggingService:
         sys.stdout.flush()
         sys.stderr.flush()
         for handler in self.logger.handlers:
-            handler.flush()
+            try:
+                handler.flush()
+                if hasattr(handler, "stream"):
+                    handler.stream.flush()
+            except Exception as e:
+                # Log the error but don't fail
+                print(f"Error flushing handler {type(handler).__name__}: {e}")
+
+    def force_flush_all(self) -> None:
+        """Force flush all handlers and ensure logs are written to disk."""
+        try:
+            self.flush()
+            # Also try to sync to disk if possible
+            for handler in self.logger.handlers:
+                if hasattr(handler, "stream") and hasattr(handler.stream, "fileno"):
+                    try:
+                        import os
+
+                        os.fsync(handler.stream.fileno())
+                    except:
+                        pass  # Not all streams support fsync
+        except Exception as e:
+            print(f"Error in force_flush_all: {e}")
 
     def create_file_logger(self, processed_filename: str) -> None:
         """Create a new file handler with the processed filename."""
@@ -217,6 +239,11 @@ class LoggingService:
                 self.logger.info(f"Current handlers: {len(self.logger.handlers)}")
                 for i, handler in enumerate(self.logger.handlers):
                     self.logger.info(f"Handler {i}: {type(handler).__name__}")
+
+                # Force flush to ensure logs are written
+                self.logger.handlers[-1].flush()
+                self.logger.info("Log file flush completed successfully")
+
             except Exception as test_e:
                 self.logger.error(f"Error testing log file write: {test_e}")
 
