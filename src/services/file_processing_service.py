@@ -272,11 +272,16 @@ class FileProcessingService:
             return
 
         try:
-            # Get log file name
+            # Get log file name using the same logic as logging service
             log_file_name = None
             if self.run_start_time:
+                # Clean the filename for use in log filename (same logic as logging_service.py)
+                clean_filename = "".join(
+                    c for c in filename if c.isalnum() or c in (" ", "-", "_")
+                ).rstrip()
+                clean_filename = clean_filename.replace(" ", "_")
                 timestamp = self.run_start_time.strftime("%Y%m%d_%H%M%S")
-                log_file_name = f"excel_processor_{timestamp}.log"
+                log_file_name = f"{clean_filename}_{timestamp}.log"
 
             self.database_service.update_file_processing_status(
                 file_name=filename,
