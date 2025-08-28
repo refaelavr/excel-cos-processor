@@ -1,3 +1,144 @@
+"""
+Excel COS Processor - File Configuration Documentation
+====================================================
+
+This file contains the configuration for processing different types of Excel files.
+The configuration is structured as a JSON-like Python dictionary that defines how
+each file type should be processed, what data to extract, and how to transform it.
+
+STRUCTURE OVERVIEW:
+------------------
+FILE_CONFIG = {
+    "Excel File Name": {                    # Exact Excel file name (including extension)
+        "Sheet Name": {                     # Exact sheet name in the Excel file
+            "key_values": [...],            # Key-value pairs to extract from specific cells
+            "tables": [...],                # Tables with headers to extract
+            "no_title_tables": [...]        # Tables without headers to extract
+        }
+    }
+}
+
+HOW TO ADD A NEW FILE:
+---------------------
+1. Add a new entry to FILE_CONFIG with the exact Excel file name as the key
+2. For each sheet you want to process, add a sheet configuration
+3. Define what data to extract using key_values, tables, and/or no_title_tables
+4. Configure database export settings and calculated columns
+
+CONFIGURATION KEYS EXPLANATION:
+------------------------------
+
+FILE LEVEL:
+- "Excel File Name": The exact name of the Excel file (including .xlsx extension)
+  This is used to match incoming files for processing.
+
+SHEET LEVEL:
+- "Sheet Name": The exact name of the worksheet in the Excel file
+  Each sheet can have its own processing configuration.
+
+KEY_VALUES SECTION:
+- "key_values": List of key-value pairs to extract from specific cells
+  Each key_value object contains:
+  - "title": The name/key for this value (used in database)
+  - "row": Row number (0-based index) where the value is located
+  - "col": Column number (0-based index) where the value is located
+  - "add_to_table": Boolean - whether to include this value in table data
+  - "placement": Where to place the value ("last_row", "all_rows", or omitted)
+  - "format": Optional date format string (e.g., "%d/%m/%Y")
+
+TABLES SECTION:
+- "tables": List of tables that have headers to extract
+  Each table object contains:
+  - "title": The title/name of the table (used for identification)
+  - "add_keys": Boolean - whether to add key_values to this table
+  - "export_to_db": Boolean - whether to export this table to database
+  - "primary_keys": List of column names that form the primary key
+  - "skip_empty_updates": Boolean - skip updates if no data changes
+  - "table_name": Database table name where data will be stored
+  - "headers": List of column names in the order they appear
+  - "calculated_columns": List of calculated/derived columns
+  - "col_count": Optional - number of columns if multiple tables are adjacent
+
+NO_TITLE_TABLES SECTION:
+- "no_title_tables": List of tables without headers to extract
+  Each no_title_table object contains:
+  - "title": Internal name for the table
+  - "start_row": Row number (0-based) where table data starts
+  - "export_to_db": Boolean - whether to export to database
+  - "table_name": Database table name
+  - "primary_keys": List of primary key column names
+  - "add_keys": Boolean - whether to add key_values
+  - "columns_to_exclude": List of column names to exclude from processing
+  - "headers": List of column names for the table
+  - "calculated_columns": List of calculated columns
+
+CALCULATED_COLUMNS SECTION:
+- "calculated_columns": List of columns to calculate/derive
+  Each calculated_column object contains:
+  - "name": Name of the calculated column
+  - "type": Type of calculation (see CALCULATED_COLUMN_TYPES below)
+  - "formula": Custom formula (for custom_formula type)
+  - "description": Description of what this column represents
+  - "format": Optional format string (for date types)
+  - "placement": Where to place the value ("all_rows" or omitted)
+
+CALCULATED_COLUMN_TYPES:
+- "cumulative_average": Running average up to current row
+- "cumulative_sum": Running sum up to current row
+- "cumulative_count": Count of non-null values up to current row
+- "cumulative_max": Maximum value up to current row
+- "cumulative_min": Minimum value up to current row
+- "rolling_average": Rolling average over N periods
+- "rolling_sum": Rolling sum over N periods
+- "percent_of_total": Percentage of total for entire column
+- "percent_change": Percentage change from previous row
+- "custom_formula": Apply custom pandas expression
+- "current_date": Apply current date
+
+DATABASE INTEGRATION:
+- The system automatically creates database tables based on the configuration
+- Primary keys are used for upsert operations (update if exists, insert if not)
+- Data types are automatically inferred from Excel data
+- Calculated columns are computed and added to the database table
+
+EXAMPLE CONFIGURATION:
+---------------------
+{
+    "My Report.xlsx": {
+        "Summary Sheet": {
+            "key_values": [
+                {
+                    "title": "report_date",
+                    "row": 1,
+                    "col": 2,
+                    "add_to_table": True,
+                    "placement": "all_rows",
+                    "format": "%Y-%m-%d"
+                }
+            ],
+            "tables": [
+                {
+                    "title": "Monthly Summary",
+                    "add_keys": True,
+                    "export_to_db": True,
+                    "primary_keys": ["report_date", "category"],
+                    "table_name": "monthly_summary",
+                    "headers": ["category", "value", "percentage"],
+                    "calculated_columns": [
+                        {
+                            "name": "last_updated",
+                            "type": "current_date",
+                            "format": "%Y-%m-%d",
+                            "placement": "all_rows"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
+"""
+
 CALCULATED_COLUMN_TYPES = {
     # Cumulative calculations (growing over time)
     "cumulative_average": "Calculate running average up to current row",
@@ -17,7 +158,7 @@ CALCULATED_COLUMN_TYPES = {
 }
 
 FILE_CONFIG = {
-    "ניתוח קנסות VM": {  # File name / file type
+    "ניתוח קנסות VM": {  # File name
         'בקרת קנסות וק"מ': {  # Sheet name
             "key_values": [
                 {

@@ -10,6 +10,30 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
+# Global logger for config manager
+_config_logger = None
+
+
+def set_config_logger(logger):
+    """Set the logger for config manager."""
+    global _config_logger
+    _config_logger = logger
+
+
+def config_log(message: str, level: str = "INFO"):
+    """Log message using config logger if available, otherwise print."""
+    global _config_logger
+    if _config_logger:
+        if level == "INFO":
+            _config_logger.info(message)
+        elif level == "WARNING":
+            _config_logger.warning(message)
+        elif level == "ERROR":
+            _config_logger.error(message)
+    else:
+        print(message)
+
+
 # Get project root directory (parent of src directory)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -24,11 +48,11 @@ try:
     env_path = os.path.join(PROJECT_ROOT, ".env")
     if os.path.exists(env_path):
         load_dotenv(env_path)
-        print(f"Loaded environment from: {env_path}")
+        config_log(f"Loaded environment from: {env_path}")
     else:
-        print(f"No .env file found at: {env_path}")
+        config_log(f"No .env file found at: {env_path}")
 except ImportError:
-    print("python-dotenv not available, using system environment variables only")
+    config_log("python-dotenv not available, using system environment variables only")
 
 
 @dataclass
@@ -64,7 +88,7 @@ class DatabaseConfig:
         """Validate configuration"""
         required_fields = [self.host, self.database, self.user, self.password]
         if not all(required_fields):
-            print("ERROR: Missing required database fields")
+            config_log("ERROR: Missing required database fields", "ERROR")
             return False
 
         # Check SSL certificate
@@ -73,7 +97,7 @@ class DatabaseConfig:
             ssl_path = os.path.join(PROJECT_ROOT, ssl_path)
 
         if ssl_path and not os.path.exists(ssl_path):
-            print(f"WARNING: SSL certificate not found: {ssl_path}")
+            config_log(f"WARNING: SSL certificate not found: {ssl_path}", "WARNING")
 
         return True
 
@@ -110,7 +134,15 @@ class ConfigManager:
         self._processing_config = None
         self._file_configs = None
         self._calculated_column_types = None
-        self._load_configs()
+        self._configs_loaded = False
+
+    def _ensure_configs_loaded(self):
+        """Ensure configurations are loaded."""
+        if not self._configs_loaded:
+            self._load_configs()
+            self.validate_all()
+            self.create_directories()
+            self._configs_loaded = True
 
     def _load_configs(self):
         """Load all configurations"""
@@ -118,9 +150,9 @@ class ConfigManager:
             self._load_database_config()
             self._load_processing_config()
             self._load_file_configs()
-            print("All configurations loaded successfully")
+            config_log("All configurations loaded successfully")
         except Exception as e:
-            print(f"Configuration loading failed: {e}")
+            config_log(f"Configuration loading failed: {e}", "ERROR")
             raise ConfigurationError(f"Failed to load configuration: {e}")
 
     def _load_database_config(self):
@@ -131,7 +163,7 @@ class ConfigManager:
                 key in os.environ
                 for key in ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"]
             ):
-                print("Loading database config from environment variables")
+                config_log("Loading database config from environment variables")
 
                 ssl_cert_path = os.environ.get(
                     "DB_SSLROOTCERT", "/etc/certs/ibm-cloud-cert.crt"
@@ -148,7 +180,7 @@ class ConfigManager:
                 )
             else:
                 # Fallback to config file
-                print("Loading database config from db_config.py")
+                config_log("Loading database config from db_config.py")
                 try:
                     # Import with absolute path
                     db_config_path = os.path.join(CONFIG_DIR, "db_config.py")
@@ -179,7 +211,7 @@ class ConfigManager:
             == "true",
             max_workers=int(os.environ.get("MAX_WORKERS", 4)),
         )
-        print("Processing configuration loaded")
+        config_log("Processing configuration loaded")
 
     def _load_file_configs(self):
         """Load file processing configurations"""
@@ -194,27 +226,34 @@ class ConfigManager:
 
             self._file_configs = file_config_module.FILE_CONFIG
             self._calculated_column_types = file_config_module.CALCULATED_COLUMN_TYPES
-            print(f"File configurations loaded: {len(self._file_configs)} file types")
+            config_log(
+                f"File configurations loaded: {len(self._file_configs)} file types"
+            )
         except Exception as e:
             raise ConfigurationError(f"Failed to load file_config.py: {e}")
 
     @property
     def database(self) -> DatabaseConfig:
+        self._ensure_configs_loaded()
         return self._db_config
 
     @property
     def processing(self) -> ProcessingConfig:
+        self._ensure_configs_loaded()
         return self._processing_config
 
     @property
     def file_configs(self) -> Dict[str, Any]:
+        self._ensure_configs_loaded()
         return self._file_configs
 
     @property
     def calculated_column_types(self) -> Dict[str, str]:
+        self._ensure_configs_loaded()
         return self._calculated_column_types
 
     def get_file_config(self, file_name: str) -> Optional[Dict[str, Any]]:
+        self._ensure_configs_loaded()
         return self._file_configs.get(file_name)
 
     def get_sheet_config(
@@ -236,17 +275,17 @@ class ConfigManager:
             abs_paths = self._processing_config.get_absolute_paths()
             for name, dir_path in abs_paths.items():
                 Path(dir_path).mkdir(parents=True, exist_ok=True)
-                print(f"Directory ready: {dir_path}")
+                config_log(f"Directory ready: {dir_path}")
 
             # Validate file configs
             if not self._file_configs:
                 raise ConfigurationError("No file configurations found")
 
-            print("All configurations validated successfully")
+            config_log("All configurations validated successfully")
             return True
 
         except Exception as e:
-            print(f"Configuration validation failed: {e}")
+            config_log(f"Configuration validation failed: {e}", "ERROR")
             raise ConfigurationError(f"Configuration validation failed: {e}")
 
     def create_directories(self):
@@ -254,7 +293,7 @@ class ConfigManager:
         abs_paths = self._processing_config.get_absolute_paths()
         for name, directory in abs_paths.items():
             Path(directory).mkdir(parents=True, exist_ok=True)
-            print(f"Created directory: {directory}")
+            config_log(f"Created directory: {directory}")
 
 
 class ConfigurationError(Exception):
@@ -272,8 +311,6 @@ def get_config() -> ConfigManager:
     global _config_manager
     if _config_manager is None:
         _config_manager = ConfigManager()
-        _config_manager.validate_all()
-        _config_manager.create_directories()
     return _config_manager
 
 
@@ -281,8 +318,6 @@ def reload_config() -> ConfigManager:
     """Reload configuration"""
     global _config_manager
     _config_manager = ConfigManager()
-    _config_manager.validate_all()
-    _config_manager.create_directories()
     return _config_manager
 
 

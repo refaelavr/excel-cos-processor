@@ -91,11 +91,11 @@ def parse_hebrew_month_date(hebrew_date_str):
         elif " " in hebrew_date_str:
             parts = hebrew_date_str.split(" ")
         else:
-            print(f"WARNING: Could not parse Hebrew date format: {hebrew_date_str}")
+            print_warning(f"Could not parse Hebrew date format: {hebrew_date_str}")
             return None
 
         if len(parts) != 2:
-            print(f"WARNING: Unexpected Hebrew date format: {hebrew_date_str}")
+            print_warning(f"Unexpected Hebrew date format: {hebrew_date_str}")
             return None
 
         month_part = parts[1].strip()
@@ -104,20 +104,20 @@ def parse_hebrew_month_date(hebrew_date_str):
         # Look up month
         month_num = hebrew_months.get(month_part)
         if not month_num:
-            print(f"WARNING: Unknown Hebrew month: {month_part}")
+            print_warning(f"Unknown Hebrew month: {month_part}")
             return None
 
         # Validate and format year
         if not year_part.isdigit() or len(year_part) != 4:
-            print(f"WARNING: Invalid year format: {year_part}")
+            print_warning(f"Invalid year format: {year_part}")
             return None
 
         result = f"{year_part}-{month_num}-01"
-        print(f"      Converted Hebrew date '{hebrew_date_str}' to '{result}'")
+        print_normal(f"      Converted Hebrew date '{hebrew_date_str}' to '{result}'")
         return result
 
     except Exception as e:
-        print(f"WARNING: Error parsing Hebrew date '{hebrew_date_str}': {str(e)}")
+        print_warning(f"Error parsing Hebrew date '{hebrew_date_str}': {str(e)}")
         return None
 
 

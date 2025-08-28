@@ -213,6 +213,34 @@ class AppOrchestrator:
                 self.logger.error("No filename to process")
                 return 1
 
+            # Create a new logging service with the filename to capture ALL logs
+            if self.excel_service:
+                # Get the cleaned filename from Excel service
+                cleaned_filename = (
+                    self.excel_service._clean_filename_from_date_patterns(filename)
+                )
+            else:
+                cleaned_filename = filename
+
+            # Create new logging service with filename to capture all logs
+            from src.services.logging_service import LoggingService
+
+            file_logger = LoggingService("ExcelProcessor", cleaned_filename)
+
+            # Set the logger for config manager
+            from src.config_manager import set_config_logger
+
+            set_config_logger(file_logger)
+
+            # Replace the logger in all services to use the new one
+            self.logger = file_logger
+            self.trigger_service.logger = file_logger
+            if self.file_processing_service:
+                self.file_processing_service.logger = file_logger
+
+            # Capture all output to the log file
+            file_logger.capture_all_output()
+
             # Process the file
             return self.process_single_file(filename)
 
