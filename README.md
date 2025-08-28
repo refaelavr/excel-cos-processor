@@ -125,17 +125,152 @@ The application uses configuration files in the `config/` directory:
 
 ### file_config.py
 
-Defines file type configurations including:
+The main configuration file that defines how different Excel files should be processed. This file contains:
 
-- File name patterns and matching rules
-- Sheet processing configurations
-- Column mappings and transformations
-- Calculated fields and formulas
-- Database table mappings
+- **File Type Definitions**: Exact Excel file names and their processing rules
+- **Sheet Configurations**: How each worksheet should be processed
+- **Data Extraction Rules**: What cells, tables, and data to extract
+- **Database Mappings**: How extracted data maps to database tables
+- **Calculated Columns**: Formulas and derived data fields
+- **Transformation Rules**: Data cleaning and formatting instructions
+
+#### Configuration Structure
+
+The configuration follows this JSON-like structure:
+
+```python
+FILE_CONFIG = {
+    "Excel File Name.xlsx": {              # Exact file name
+        "Sheet Name": {                    # Exact sheet name
+            "key_values": [...],           # Key-value pairs from specific cells
+            "tables": [...],               # Tables with headers
+            "no_title_tables": [...]       # Tables without headers
+        }
+    }
+}
+```
+
+#### Key Configuration Sections
+
+**Key Values (`key_values`)**
+
+- Extract specific values from individual cells
+- Define row/column coordinates (0-based indexing)
+- Specify data formatting and placement rules
+- Add metadata to table records
+
+**Tables (`tables`)**
+
+- Extract structured data from tables with headers
+- Define database table mappings and primary keys
+- Configure calculated columns and transformations
+- Set export and update behavior
+
+**No Title Tables (`no_title_tables`)**
+
+- Extract data from tables without headers
+- Specify start row and column structure
+- Define custom headers and data types
+- Configure exclusion rules for unwanted columns
+
+**Calculated Columns (`calculated_columns`)**
+
+- Create derived data fields using formulas
+- Support cumulative, rolling, and percentage calculations
+- Apply custom pandas expressions
+- Add timestamps and metadata
+
+#### Supported Calculation Types
+
+- **Cumulative**: Running sums, averages, counts, min/max values
+- **Rolling**: Window-based calculations over N periods
+- **Percentage**: Total percentages and change calculations
+- **Custom**: User-defined pandas formulas
+- **Date**: Current date and timestamp fields
+
+#### Database Integration
+
+- Automatic table creation based on configuration
+- Primary key management for upsert operations
+- Data type inference from Excel content
+- Conflict resolution and update strategies
+
+For detailed configuration examples and complete documentation, see the comments in `config/file_config.py`.
+
+#### Adding New File Configurations
+
+To add support for a new Excel file type:
+
+1. **Analyze the Excel File**
+
+   - Determine the exact file name (including extension)
+   - Map out the worksheet names and their content
+   - Identify key data points and table structures
+   - Document cell coordinates for key values (0-based indexing)
+   - Note table boundaries, headers, and data types
+
+2. **Add Configuration Entry**
+
+   ```python
+   "New Report.xlsx": {
+       "Main Sheet": {
+           "key_values": [
+               {
+                   "title": "report_date",
+                   "row": 1,
+                   "col": 2,
+                   "add_to_table": True,
+                   "placement": "all_rows",
+                   "format": "%Y-%m-%d"
+               }
+           ],
+           "tables": [
+               {
+                   "title": "Data Table",
+                   "add_keys": True,
+                   "export_to_db": True,
+                   "primary_keys": ["date", "category"],
+                   "table_name": "new_report_data",
+                   "headers": ["date", "category", "value"],
+                   "calculated_columns": [
+                       {
+                           "name": "last_updated",
+                           "type": "current_date",
+                           "format": "%Y-%m-%d",
+                           "placement": "all_rows"
+                       }
+                   ]
+               }
+           ]
+       }
+   }
+   ```
+
+3. **Test the Configuration**
+
+   - Place a sample file in `data/input/`
+   - Run in test mode: `python app_cloud.py filename.xlsx`
+   - Check logs for errors or warnings
+   - Verify data extraction and database export
+   - Validate calculated columns and transformations
+
+4. **Best Practices**
+   - Use exact file names including extensions
+   - Use 0-based indexing for row/column coordinates
+   - Choose appropriate primary keys for upsert operations
+   - Test with representative sample files
+   - Never hardcode credentials in configuration files
 
 ### db_config.py
 
-Contains database connection settings and configuration.
+Contains database connection settings and configuration:
+
+- Database host, port, and credentials
+- SSL configuration for secure connections
+- Connection pooling and timeout settings
+- Environment variable integration
+
+The database configuration is environment-driven and reads all values from environment variables for security.
 
 ## Database Schema
 

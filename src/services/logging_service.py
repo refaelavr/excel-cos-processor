@@ -13,10 +13,58 @@ from utils.environment_utils import get_job_info
 class LoggingService:
     """Centralized logging service for the application."""
 
-    def __init__(self, service_name: str = "ExcelProcessor"):
+    def __init__(
+        self, service_name: str = "ExcelProcessor", processed_filename: str = None
+    ):
         self.service_name = service_name
+        self.processed_filename = processed_filename
         self.logger = self._setup_logger()
+
+        # Create file logger immediately if filename is provided
+        if self.processed_filename:
+            self.create_file_logger(self.processed_filename)
+
         self._log_startup_info()
+
+    def capture_all_output(self) -> None:
+        """Capture all stdout and stderr to the current log file."""
+        import sys
+        from io import StringIO
+
+        class LoggingStream:
+            def __init__(self, original_stream, logger, level):
+                self.original_stream = original_stream
+                self.logger = logger
+                self.level = level
+                self.buffer = ""
+
+            def write(self, text):
+                # Write to original stream
+                self.original_stream.write(text)
+                self.original_stream.flush()
+
+                # Add to buffer
+                self.buffer += text
+
+                # If we have a complete line, log it
+                if "\n" in self.buffer:
+                    lines = self.buffer.split("\n")
+                    for line in lines[
+                        :-1
+                    ]:  # All but the last (which might be incomplete)
+                        if line.strip():  # Only log non-empty lines
+                            self.logger.log(self.level, f"STDOUT: {line}")
+                    self.buffer = lines[-1]  # Keep the last (possibly incomplete) line
+
+            def flush(self):
+                self.original_stream.flush()
+                if self.buffer.strip():
+                    self.logger.log(self.level, f"STDOUT: {self.buffer}")
+                    self.buffer = ""
+
+        # Replace stdout and stderr
+        sys.stdout = LoggingStream(sys.stdout, self.logger, logging.INFO)
+        sys.stderr = LoggingStream(sys.stderr, self.logger, logging.ERROR)
 
     def _setup_logger(self) -> logging.Logger:
         """Setup logging with immediate console output for IBM Cloud Code Engine."""
@@ -44,29 +92,8 @@ class LoggingService:
             logger.addHandler(console_handler)
 
             # File handler for local logs (only if we can create the directory)
-            try:
-                today = datetime.now().strftime("%d%m%Y")
-                log_dir = Path("logs") / today
-                log_dir.mkdir(parents=True, exist_ok=True)
-
-                log_file = log_dir / "complete_excel_processor.log"
-
-                file_handler = logging.FileHandler(
-                    filename=str(log_file), mode="a", encoding="utf-8"
-                )
-                file_handler.setLevel(logging.INFO)
-
-                file_formatter = logging.Formatter(
-                    "%(asctime)s - %(levelname)s - %(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S",
-                )
-                file_handler.setFormatter(file_formatter)
-
-                logger.addHandler(file_handler)
-
-            except Exception as e:
-                # If file logging fails, at least we have console logging
-                print(f"Warning: Could not setup file logging: {str(e)}")
+            # Note: File-specific logger will be created later via create_file_logger()
+            # This ensures we only have one log file per processing run
 
         return logger
 
@@ -124,3 +151,80 @@ class LoggingService:
         sys.stderr.flush()
         for handler in self.logger.handlers:
             handler.flush()
+
+    def create_file_logger(self, processed_filename: str) -> None:
+        """Create a new file handler with the processed filename."""
+        try:
+            today = datetime.now().strftime("%Y%m%d")
+            log_dir = Path("logs") / today
+            log_dir.mkdir(parents=True, exist_ok=True)
+
+            # Clean the filename for use in log filename
+            clean_filename = "".join(
+                c for c in processed_filename if c.isalnum() or c in (" ", "-", "_")
+            ).rstrip()
+            clean_filename = clean_filename.replace(" ", "_")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_filename = f"{clean_filename}_{timestamp}.log"
+
+            log_file = log_dir / log_filename
+
+            file_handler = logging.FileHandler(
+                filename=str(log_file), mode="a", encoding="utf-8"
+            )
+            file_handler.setLevel(logging.INFO)
+
+            file_formatter = logging.Formatter(
+                "%(asctime)s - %(levelname)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+            file_handler.setFormatter(file_formatter)
+
+            self.logger.addHandler(file_handler)
+            self.logger.info(f"Created file logger: {log_filename}")
+
+            # Capture all stdout and stderr to the log file
+            self._capture_stdout_stderr(log_file)
+
+        except Exception as e:
+            self.logger.error(f"Could not create file logger: {str(e)}")
+
+    def _capture_stdout_stderr(self, log_file: Path) -> None:
+        """Capture all stdout and stderr to the log file."""
+        import sys
+        from io import StringIO
+
+        class LoggingStream:
+            def __init__(self, original_stream, logger, level):
+                self.original_stream = original_stream
+                self.logger = logger
+                self.level = level
+                self.buffer = ""
+
+            def write(self, text):
+                # Write to original stream
+                self.original_stream.write(text)
+                self.original_stream.flush()
+
+                # Add to buffer
+                self.buffer += text
+
+                # If we have a complete line, log it
+                if "\n" in self.buffer:
+                    lines = self.buffer.split("\n")
+                    for line in lines[
+                        :-1
+                    ]:  # All but the last (which might be incomplete)
+                        if line.strip():  # Only log non-empty lines
+                            self.logger.log(self.level, f"STDOUT: {line}")
+                    self.buffer = lines[-1]  # Keep the last (possibly incomplete) line
+
+            def flush(self):
+                self.original_stream.flush()
+                if self.buffer.strip():
+                    self.logger.log(self.level, f"STDOUT: {self.buffer}")
+                    self.buffer = ""
+
+        # Replace stdout and stderr
+        sys.stdout = LoggingStream(sys.stdout, self.logger, logging.INFO)
+        sys.stderr = LoggingStream(sys.stderr, self.logger, logging.ERROR)
