@@ -174,10 +174,19 @@ class LoggingService:
             )
 
             # Clean the filename for use in log filename
+            # First, extract just the filename without path
+            import os
+
+            self.logger.info(f"Original processed_filename: '{processed_filename}'")
+            base_filename = os.path.basename(processed_filename)
+            self.logger.info(f"Extracted base_filename: '{base_filename}'")
+
+            # Then clean the filename
             clean_filename = "".join(
-                c for c in processed_filename if c.isalnum() or c in (" ", "-", "_")
+                c for c in base_filename if c.isalnum() or c in (" ", "-", "_")
             ).rstrip()
             clean_filename = clean_filename.replace(" ", "_")
+            self.logger.info(f"Cleaned filename: '{clean_filename}'")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             log_filename = f"{clean_filename}_{timestamp}.log"
 
