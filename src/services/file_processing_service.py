@@ -131,6 +131,11 @@ class FileProcessingService:
         try:
             filename = get_filename_from_path(file_path)
             self.logger.info(f"Processing local file: {filename}")
+            self.logger.info(f"=== STARTING FILE PROCESSING ===")
+
+            # Force flush logs to ensure they're written
+            if hasattr(self.logger, "force_flush_all"):
+                self.logger.force_flush_all()
 
             # Process the file
             success, processing_error = self._process_local_file(file_path)
@@ -148,6 +153,11 @@ class FileProcessingService:
 
             # Calculate processing time
             processing_time = (datetime.now() - start_time).total_seconds()
+
+            # Force flush logs before finishing
+            if hasattr(self.logger, "force_flush_all"):
+                self.logger.force_flush_all()
+                self.logger.info(f"=== FILE PROCESSING COMPLETED ===")
 
             return ProcessingResult(
                 success=success,
