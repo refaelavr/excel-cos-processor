@@ -158,7 +158,7 @@ CALCULATED_COLUMN_TYPES = {
 }
 
 FILE_CONFIG = {
-    "ניתוח קנסות VM אקסל": {  # File name
+    "ניתוח קנסות VM": {  # File name
         'בקרת קנסות וק"מ': {  # Sheet name
             "key_values": [
                 {
