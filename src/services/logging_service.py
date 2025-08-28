@@ -155,9 +155,23 @@ class LoggingService:
     def create_file_logger(self, processed_filename: str) -> None:
         """Create a new file handler with the processed filename."""
         try:
+            import os
+
+            self.logger.info(f"Creating file logger for: {processed_filename}")
+            self.logger.info(f"Current working directory: {os.getcwd()}")
+            self.logger.info(f"Current directory contents: {os.listdir('.')}")
+
             today = datetime.now().strftime("%Y%m%d")
             log_dir = Path("logs") / today
+            self.logger.info(f"Log directory: {log_dir}")
+            self.logger.info(f"Absolute log directory: {log_dir.absolute()}")
+
             log_dir.mkdir(parents=True, exist_ok=True)
+            self.logger.info(f"Log directory created/verified: {log_dir}")
+            self.logger.info(f"Log directory exists: {log_dir.exists()}")
+            self.logger.info(
+                f"Log directory is writable: {os.access(log_dir, os.W_OK)}"
+            )
 
             # Clean the filename for use in log filename
             clean_filename = "".join(
@@ -168,6 +182,7 @@ class LoggingService:
             log_filename = f"{clean_filename}_{timestamp}.log"
 
             log_file = log_dir / log_filename
+            self.logger.info(f"Log file path: {log_file}")
 
             file_handler = logging.FileHandler(
                 filename=str(log_file), mode="a", encoding="utf-8"
@@ -181,13 +196,29 @@ class LoggingService:
             file_handler.setFormatter(file_formatter)
 
             self.logger.addHandler(file_handler)
-            self.logger.info(f"Created file logger: {log_filename}")
+            self.logger.info(f"Successfully created file logger: {log_filename}")
+            self.logger.info(f"Log file will be saved to: {log_file}")
+
+            # Test write to the log file
+            try:
+                test_message = (
+                    f"=== LOG FILE CREATED AT {datetime.now().isoformat()} ==="
+                )
+                self.logger.info(test_message)
+                self.logger.info(f"Current handlers: {len(self.logger.handlers)}")
+                for i, handler in enumerate(self.logger.handlers):
+                    self.logger.info(f"Handler {i}: {type(handler).__name__}")
+            except Exception as test_e:
+                self.logger.error(f"Error testing log file write: {test_e}")
 
             # Capture all stdout and stderr to the log file
             self._capture_stdout_stderr(log_file)
 
         except Exception as e:
+            import traceback
+
             self.logger.error(f"Could not create file logger: {str(e)}")
+            self.logger.error(f"Exception details: {traceback.format_exc()}")
 
     def _capture_stdout_stderr(self, log_file: Path) -> None:
         """Capture all stdout and stderr to the log file."""
