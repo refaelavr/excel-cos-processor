@@ -237,6 +237,8 @@ class AppOrchestrator:
             self.trigger_service.logger = file_logger
             if self.file_processing_service:
                 self.file_processing_service.logger = file_logger
+            if self.excel_service:
+                self.excel_service.logger = file_logger
 
             # Capture all output to the log file
             file_logger.capture_all_output()

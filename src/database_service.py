@@ -149,12 +149,13 @@ class DatabaseService:
                 # Determine VARCHAR length
                 max_len = max(
                     (len(str(val)) for val in sample_values if pd.notna(val)),
-                    default=50,
+                    default=100,
                 )
-                varchar_len = min(max(max_len + 50, 100), 500)
+                # Use a more generous buffer and higher minimum
+                varchar_len = min(max(max_len + 100, 200), 1000)
                 return f"VARCHAR({varchar_len})"
 
-            return "VARCHAR(255)"
+            return "VARCHAR(500)"
 
     def _sanitize_table_name(self, table_name):
         """Convert table name to valid PostgreSQL table name"""
@@ -380,6 +381,19 @@ class DatabaseService:
             if hasattr(e, "pgerror"):
                 error_details += f" (PostgreSQL error: {e.pgerror})"
             print_error(error_details)
+
+            # If it's a VARCHAR length error, provide more detailed information
+            if "value too long for type character varying" in str(e):
+                print_error(
+                    f"Column length issue detected. You may need to alter the table columns to VARCHAR(500)"
+                )
+                print_error(
+                    f"Example: ALTER TABLE {table_name} ALTER COLUMN column_name TYPE VARCHAR(500);"
+                )
+                print_error(
+                    f"Or drop and recreate the table to use new column definitions."
+                )
+
             if conn:
                 conn.rollback()
             return False
