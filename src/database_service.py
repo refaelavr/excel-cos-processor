@@ -207,20 +207,23 @@ class DatabaseService:
         primary_keys: List[str],
         skip_empty_updates: bool = False,
         batch_size: int = 1000,
-    ) -> bool:
+    ) -> tuple[bool, str]:
         """
         Bulk upsert using psycopg2 with batching for large datasets
+
+        Returns:
+            tuple: (success: bool, error_message: str)
         """
         if df is None or len(df) == 0:
             print_warning(f"No data to upsert for table {table_name}")
-            return True
+            return True, ""
 
         try:
             print_normal(f"Starting bulk upsert: {len(df)} rows to '{table_name}'")
 
             conn = self.get_connection()
             if conn is None:
-                return False
+                return False, "Failed to get database connection"
 
             # Prepare data
             df_clean = self._convert_date_columns(df.copy())
@@ -235,23 +238,28 @@ class DatabaseService:
             # Create table if not exists
             if not self._create_table_from_dataframe(conn, table_name, df_clean):
                 conn.close()
-                return False
+                return False, f"Failed to create table '{table_name}'"
 
             if skip_empty_updates:
-                success = self._bulk_upsert_merge_mode(
+                success, error_msg = self._bulk_upsert_merge_mode(
                     conn, df_clean, table_name, primary_keys, batch_size
                 )
             else:
-                success = self._bulk_upsert_standard_mode(
+                success, error_msg = self._bulk_upsert_standard_mode(
                     conn, df_clean, table_name, primary_keys, batch_size
                 )
 
             conn.close()
-            return success
+            return success, error_msg
 
         except Exception as e:
-            print_error(f"Bulk upsert failed for table {table_name}: {str(e)}")
-            return False
+            error_msg = f"Bulk upsert failed for table {table_name}: {str(e)}"
+            if hasattr(e, "pgcode"):
+                error_msg += f" (PostgreSQL code: {e.pgcode})"
+            if hasattr(e, "pgerror"):
+                error_msg += f" (PostgreSQL error: {e.pgerror})"
+            print_error(error_msg)
+            return False, error_msg
 
     def _bulk_upsert_standard_mode(
         self, conn, df, table_name, primary_keys, batch_size
@@ -286,8 +294,9 @@ class DatabaseService:
                     df_cols_mapped[df_col] = db_col_name
 
             if not df_cols_mapped:
-                print_error(f"No matching columns found for table '{table_name}'")
-                return False
+                error_msg = f"No matching columns found for table '{table_name}'"
+                print_error(error_msg)
+                return False, error_msg
 
             # Validate primary keys
             valid_pk_cols = []
@@ -296,8 +305,9 @@ class DatabaseService:
                     valid_pk_cols.append(pk_col)
 
             if not valid_pk_cols:
-                print_error("No valid primary key columns found")
-                return False
+                error_msg = "No valid primary key columns found"
+                print_error(error_msg)
+                return False, error_msg
 
             print_normal(f"Using UPSERT with primary keys: {valid_pk_cols}")
 
@@ -370,7 +380,7 @@ class DatabaseService:
             print_success(
                 f"Standard mode completed: {rows_processed} rows in {table_name}"
             )
-            return True
+            return True, ""
 
         except Exception as e:
             error_details = (
@@ -396,7 +406,7 @@ class DatabaseService:
 
             if conn:
                 conn.rollback()
-            return False
+            return False, error_details
 
     def _bulk_upsert_merge_mode(self, conn, df, table_name, primary_keys, batch_size):
         """Merge mode with batching"""
@@ -536,7 +546,7 @@ class DatabaseService:
             print_success(
                 f"Merge mode completed: {rows_affected} rows affected in {table_name}"
             )
-            return True
+            return True, ""
 
         except Exception as e:
             error_details = (
@@ -549,7 +559,7 @@ class DatabaseService:
             print_error(error_details)
             if conn:
                 conn.rollback()
-            return False
+            return False, error_details
 
     def export_table(
         self,
@@ -588,13 +598,14 @@ class DatabaseService:
         )
 
         try:
-            success = self.bulk_upsert(
+            success, error_msg = self.bulk_upsert(
                 df, db_table_name, primary_keys, skip_empty_updates
             )
             if success:
                 return True, ""
             else:
-                return False, f"Bulk upsert failed for table '{table_title}'"
+                # bulk_upsert failed and returned detailed error message
+                return False, error_msg
         except Exception as e:
             error_msg = f"Export failed for table '{table_title}': {str(e)}"
             if hasattr(e, "pgcode"):

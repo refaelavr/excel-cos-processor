@@ -62,6 +62,8 @@ class ExcelProcessingService:
         - Date formats: DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY
         - Time formats: HH-MM-SS, HH:MM:SS
         - Standalone numbers: 13.7, 2024, etc.
+        - Hebrew month names: ינואר, פברואר, מרץ, אפריל, מאי, יוני, יולי, אוגוסט, ספטמבר, אוקטובר, נובמבר, דצמבר
+        - Hebrew month with "חודש" prefix: חודש מאי, חודש יוני, etc.
 
         Args:
             filename: Original filename that may contain date patterns
@@ -74,6 +76,8 @@ class ExcelProcessingService:
             "vm_analysis_20240815_143022.xlsx" → "vm_analysis"
             "ניתוח קנסות VM 2024.xlsx" → "ניתוח קנסות VM"
             "סטטוס אי ביצוע בזמן אמת - YIT - נתונים להיום26-08-2025 21-15-00.xlsx" → "סטטוס אי ביצוע בזמן אמת - YIT - נתונים להיום"
+            "מהירות מסחרית הסכם משרד התחבורה יוני.xlsx" → "מהירות מסחרית הסכם משרד התחבורה"
+            "ניתוח קנסות VM חודש מאי.xlsx" → "ניתוח קנסות VM"
         """
         clean_name = filename
 
@@ -106,7 +110,43 @@ class ExcelProcessingService:
             r"\s+\d{1,4}[\.\-\/]?\d{0,2}[\.\-\/]?\d{0,4}$", "", clean_name
         )
 
-        # Step 6: Clean up extra whitespace
+        # Step 6: Remove Hebrew month names
+        # Hebrew month names in various formats
+        hebrew_months = [
+            r"\s*ינואר\s*",
+            r"\s*פברואר\s*",
+            r"\s*מרץ\s*",
+            r"\s*אפריל\s*",
+            r"\s*מאי\s*",
+            r"\s*יוני\s*",
+            r"\s*יולי\s*",
+            r"\s*אוגוסט\s*",
+            r"\s*ספטמבר\s*",
+            r"\s*אוקטובר\s*",
+            r"\s*נובמבר\s*",
+            r"\s*דצמבר\s*",
+            # Alternative spellings and variations
+            r"\s*חודש\s+ינואר\s*",
+            r"\s*חודש\s+פברואר\s*",
+            r"\s*חודש\s+מרץ\s*",
+            r"\s*חודש\s+אפריל\s*",
+            r"\s*חודש\s+מאי\s*",
+            r"\s*חודש\s+יוני\s*",
+            r"\s*חודש\s+יולי\s*",
+            r"\s*חודש\s+אוגוסט\s*",
+            r"\s*חודש\s+ספטמבר\s*",
+            r"\s*חודש\s+אוקטובר\s*",
+            r"\s*חודש\s+נובמבר\s*",
+            r"\s*חודש\s+דצמבר\s*",
+        ]
+
+        for month_pattern in hebrew_months:
+            clean_name = re.sub(month_pattern, " ", clean_name)
+
+        # Additional cleanup: Remove standalone "חודש" if it remains
+        clean_name = re.sub(r"\s*חודש\s*", " ", clean_name)
+
+        # Step 7: Clean up extra whitespace
         clean_name = clean_name.strip()
 
         return clean_name
