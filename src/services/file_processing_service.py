@@ -302,13 +302,16 @@ class FileProcessingService:
             # Get log file name using the same logic as logging service
             log_file_name = None
             if self.run_start_time:
-                # Clean the filename for use in log filename (same logic as logging_service.py)
-                clean_filename = "".join(
-                    c for c in filename if c.isalnum() or c in (" ", "-", "_")
-                ).rstrip()
-                clean_filename = clean_filename.replace(" ", "_")
+                # Use the original filename for log filename (same logic as logging_service.py)
+                # First, extract just the filename without path (same as logging_service.py)
+                import os
+
+                base_filename = os.path.basename(filename)
+
+                # Use the original filename (just replace spaces with underscores for file system compatibility)
+                log_filename_base = base_filename.replace(" ", "_")
                 timestamp = self.run_start_time.strftime("%Y%m%d_%H%M%S")
-                log_file_name = f"{clean_filename}_{timestamp}.log"
+                log_file_name = f"{log_filename_base}_{timestamp}.log"
 
             self.database_service.update_file_processing_status(
                 file_name=filename,
