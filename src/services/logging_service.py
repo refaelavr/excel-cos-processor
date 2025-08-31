@@ -195,7 +195,7 @@ class LoggingService:
                 f"Log directory is writable: {os.access(log_dir, os.W_OK)}"
             )
 
-            # Clean the filename for use in log filename
+            # Use the original filename for log filename
             # First, extract just the filename without path
             import os
 
@@ -203,14 +203,11 @@ class LoggingService:
             base_filename = os.path.basename(processed_filename)
             self.logger.info(f"Extracted base_filename: '{base_filename}'")
 
-            # Then clean the filename
-            clean_filename = "".join(
-                c for c in base_filename if c.isalnum() or c in (" ", "-", "_")
-            ).rstrip()
-            clean_filename = clean_filename.replace(" ", "_")
-            self.logger.info(f"Cleaned filename: '{clean_filename}'")
+            # Use the original filename (just replace spaces with underscores for file system compatibility)
+            log_filename_base = base_filename.replace(" ", "_")
+            self.logger.info(f"Log filename base: '{log_filename_base}'")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            log_filename = f"{clean_filename}_{timestamp}.log"
+            log_filename = f"{log_filename_base}_{timestamp}.log"
 
             log_file = log_dir / log_filename
             self.logger.info(f"Log file path: {log_file}")

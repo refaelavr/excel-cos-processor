@@ -5,11 +5,11 @@ Main application orchestrator that coordinates all services.
 import os
 import sys
 from typing import Optional
-from models.processing_result import ProcessingResult
-from utils.environment_utils import get_environment, is_production
-from services.logging_service import LoggingService
-from services.trigger_service import TriggerService
-from services.file_processing_service import FileProcessingService
+from src.models.processing_result import ProcessingResult
+from src.utils.environment_utils import get_environment, is_production
+from src.services.logging_service import LoggingService
+from src.services.trigger_service import TriggerService
+from src.services.file_processing_service import FileProcessingService
 
 
 class AppOrchestrator:
@@ -65,8 +65,8 @@ class AppOrchestrator:
     def _initialize_cos_service(self) -> None:
         """Initialize COS service for production mode."""
         try:
-            from services.cos_service import COSService
-            from services.archive_service import ArchiveService
+            from src.services.cos_service import COSService
+            from src.services.archive_service import ArchiveService
 
             bucket_name = os.getenv("COS_BUCKET_NAME", "")
             self.logger.info(f"COS_BUCKET_NAME: {bucket_name}")
@@ -96,6 +96,11 @@ class AppOrchestrator:
             else:
                 self.logger.warning("COS_BUCKET_NAME not configured")
                 self.cos_service = None
+                # Initialize local archive service when COS is not available
+                self.logger.info(
+                    "Initializing local archive service (COS not available)..."
+                )
+                self._initialize_local_archive_service()
         except ImportError as e:
             self.logger.warning(f"Could not import COS service: {str(e)}")
             self.logger.info("Continuing without COS service")
@@ -140,8 +145,8 @@ class AppOrchestrator:
     def _initialize_database_service(self) -> None:
         """Initialize database service."""
         try:
-            from database_service import DatabaseService
-            from config_manager import get_config
+            from src.database_service import DatabaseService
+            from src.config_manager import get_config
 
             config = get_config()
             if config.processing.enable_database:
@@ -225,7 +230,7 @@ class AppOrchestrator:
             # Create new logging service with filename to capture all logs
             from src.services.logging_service import LoggingService
 
-            file_logger = LoggingService("ExcelProcessor", cleaned_filename)
+            file_logger = LoggingService("ExcelProcessor", filename)
 
             # Set the logger for config manager
             from src.config_manager import set_config_logger
