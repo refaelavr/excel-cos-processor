@@ -137,6 +137,22 @@ class FileProcessingService:
             if hasattr(self.logger, "force_flush_all"):
                 self.logger.force_flush_all()
 
+            # Create processing record in database
+            try:
+                import os
+
+                file_size = os.path.getsize(file_path)
+
+                # Create a simple metadata object
+                class FileMetadata:
+                    def __init__(self, size):
+                        self.size = size
+
+                metadata = FileMetadata(file_size)
+                self._create_processing_record(filename, filename, metadata)
+            except Exception as e:
+                self.logger.warning(f"Could not create processing record: {str(e)}")
+
             # Process the file
             success, processing_error = self._process_local_file(file_path)
 
@@ -149,6 +165,14 @@ class FileProcessingService:
             else:
                 self.logger.warning(
                     "Archive service not available - skipping archiving"
+                )
+
+            # Update processing status in database
+            if success:
+                self._update_processing_status(filename, "success", None, archive_path)
+            else:
+                self._update_processing_status(
+                    filename, "failed", processing_error, archive_path
                 )
 
             # Calculate processing time
@@ -214,6 +238,34 @@ class FileProcessingService:
                                 False,
                                 f"Database errors: {', '.join(has_database_errors)}",
                             )
+                        elif tables_count == 0:
+                            # No tables were processed - this is a failure
+                            self.logger.error(
+                                f"Excel processing failed: No tables were processed from file {filename}"
+                            )
+
+                            # Collect detailed error information
+                            sheets = file_results.get("sheets", {})
+                            failed_sheets = []
+                            for sheet_name, sheet_result in sheets.items():
+                                if not sheet_result.get("success", False):
+                                    error = sheet_result.get("error", "Unknown error")
+                                    failed_sheets.append(
+                                        f"Sheet '{sheet_name}': {error}"
+                                    )
+                                    self.logger.error(
+                                        f"  Sheet '{sheet_name}': Failed - {error}"
+                                    )
+
+                            # Create detailed error message
+                            if failed_sheets:
+                                error_message = f"No tables processed from file {filename}. Failed sheets: {'; '.join(failed_sheets)}"
+                            else:
+                                error_message = (
+                                    f"No tables processed from file {filename}"
+                                )
+
+                            return False, error_message
                         else:
                             self.logger.info(
                                 f"Excel processing completed successfully for: {filename}"
