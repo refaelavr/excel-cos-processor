@@ -64,6 +64,12 @@ class DatabaseService:
         """Convert a single value to Python native type"""
         if pd.isna(value):
             return None
+        elif isinstance(value, str):
+            # Handle dash-to-null conversion for numeric columns
+            # Only convert standalone dash to null, preserve values like 'פתח-תקוה'
+            if value.strip() == "-":
+                return None
+            return value
         elif isinstance(value, (np.int64, np.int32, np.int16, np.int8)):
             return int(value)
         elif isinstance(value, (np.float64, np.float32)):
@@ -328,12 +334,9 @@ class DatabaseService:
                     row_values = []
                     for df_col, db_col in df_cols_mapped.items():
                         value = row[df_col]
-                        if pd.isna(value):
-                            row_values.append(None)
-                        elif isinstance(value, str) and value.strip() == "":
-                            row_values.append(None)
-                        else:
-                            row_values.append(value)
+                        # Use _convert_single_value for consistent handling including dash-to-null
+                        converted_value = self._convert_single_value(value)
+                        row_values.append(converted_value)
                     values.append(tuple(row_values))
 
                 # Create UPSERT query
