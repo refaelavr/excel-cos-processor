@@ -281,6 +281,14 @@ The application creates and manages tables based on Excel file structure and con
 - Primary key management
 - Upsert operations with conflict resolution
 
+### Data Type Handling
+
+The system automatically handles common data type issues:
+
+- **Dash-to-Null Conversion**: Standalone dash characters ('-') in Excel data are automatically converted to NULL values in the database. This is particularly useful for numeric columns that may contain dashes representing missing data.
+- **Smart Conversion**: Values like 'פתח-תקוה' (containing dashes as part of meaningful text) are preserved and not converted to null.
+- **Automatic Type Detection**: The system automatically detects and converts data types based on content analysis.
+
 ## File Processing Status
 
 The application tracks processing status in a dedicated database table:
