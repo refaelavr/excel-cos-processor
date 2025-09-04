@@ -863,15 +863,15 @@ FILE_CONFIG = {
                     "primary_keys": ["date", "id_num"],
                     "add_keys": True,
                     "columns_to_exclude": [
-                        "מספר אישי",
                         "זמן הרצת המודל",
-                        "שם פרטי",
-                        "שם משפחה",
                         "ספירה",
                     ],  # Drop columns
                     "headers": [
                         "date",
                         "id_num",
+                        "personal_id",
+                        "first_name",
+                        "last_name",
                         "sector_type",
                         "sector",
                         "zone_id",
