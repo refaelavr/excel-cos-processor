@@ -110,7 +110,7 @@ class FileProcessingService:
                 filename = get_filename_from_path(cos_key)
                 self._create_processing_record(filename, cos_key, FileMetadata(size=0))
                 self._update_processing_status(filename, "failed", error_msg)
-            except:
+            except (OSError, IOError):
                 pass
 
             return ProcessingResult(

@@ -1,43 +1,99 @@
 import os
 import pandas as pd
-
+from typing import Optional
 
 # Global logger for extractors
-_logger = None
+_logger: Optional[object] = None
 
 
-def set_logger(logger):
-    """Set the logger for extractors functions."""
+def set_logger(logger) -> None:
+    """Set the logger for extractors functions.
+
+    Args:
+        logger: Logger instance to use for logging operations
+    """
     global _logger
     _logger = logger
 
 
-def print_success(msg):
+def _log_message(msg: str, level: str = "INFO") -> None:
+    """Internal logging function that uses the global logger if available.
+
+    Args:
+        msg: Message to log
+        level: Log level (INFO, SUCCESS, WARNING, ERROR)
+    """
     if _logger:
-        _logger.info(f"SUCCESS: {msg}")
+        if level == "SUCCESS":
+            _logger.info(f"SUCCESS: {msg}")
+        elif level == "ERROR":
+            _logger.error(msg)
+        elif level == "WARNING":
+            _logger.warning(msg)
+        else:
+            _logger.info(msg)
     else:
-        print(f"SUCCESS: {msg}")
+        # Fallback to console output
+        prefix = f"{level}: " if level != "INFO" else ""
+        print(f"{prefix}{msg}")
 
 
-def print_error(msg):
-    if _logger:
-        _logger.error(msg)
-    else:
-        print(f"ERROR: {msg}")
+def print_success(msg: str) -> None:
+    """Log a success message."""
+    _log_message(msg, "SUCCESS")
 
 
-def print_warning(msg):
-    if _logger:
-        _logger.warning(msg)
-    else:
-        print(f"WARNING: {msg}")
+def print_error(msg: str) -> None:
+    """Log an error message."""
+    _log_message(msg, "ERROR")
 
 
-def print_normal(msg):
-    if _logger:
-        _logger.info(msg)
-    else:
-        print(msg)
+def print_warning(msg: str) -> None:
+    """Log a warning message."""
+    _log_message(msg, "WARNING")
+
+
+def print_normal(msg: str) -> None:
+    """Log a normal info message."""
+    _log_message(msg, "INFO")
+
+
+def convert_hebrew_month_abbreviation(month_abbrev):
+    """
+    Convert abbreviated Hebrew month to full Hebrew month name.
+
+    Args:
+        month_abbrev: Abbreviated Hebrew month (e.g., 'ינו', 'פבר', 'מרץ')
+
+    Returns:
+        Full Hebrew month name (e.g., 'ינואר', 'פברואר', 'מרץ')
+    """
+    if not month_abbrev or pd.isna(month_abbrev):
+        return month_abbrev
+
+    # Hebrew month mappings (abbreviated to full)
+    hebrew_month_mapping = {
+        "ינו": "ינואר",
+        "פבר": "פברואר",
+        "מרץ": "מרץ",
+        "אפר": "אפריל",
+        "מאי": "מאי",
+        "יונ": "יוני",
+        "יול": "יולי",
+        "אוג": "אוגוסט",
+        "ספט": "ספטמבר",
+        "אוק": "אוקטובר",
+        "נוב": "נובמבר",
+        "דצמ": "דצמבר",
+    }
+
+    month_str = str(month_abbrev).strip()
+    full_month = hebrew_month_mapping.get(month_str, month_str)
+
+    if full_month != month_str:
+        print_normal(f"      Converted Hebrew month '{month_str}' -> '{full_month}'")
+
+    return full_month
 
 
 def parse_hebrew_month_date(hebrew_date_str):
@@ -224,7 +280,7 @@ def extract_key_values(df, key_defs):
                                                 f"      Converted value '{value}' to first day of month: '{first_day_of_month}'"
                                             )
                                             value = first_day_of_month
-                                        except:
+                                        except (ValueError, TypeError):
                                             print_warning(
                                                 f"      Warning: Could not convert value '{value}' to first day of month"
                                             )
@@ -287,7 +343,7 @@ def extract_key_values(df, key_defs):
                                         f"      Formatted date '{value}' -> '{formatted_value}' using format '{date_format}'"
                                     )
                                     value = formatted_value
-                                except:
+                                except (ValueError, TypeError):
                                     print_warning(
                                         f"      Warning: Could not format value '{value}' as date with format '{date_format}'"
                                     )
@@ -448,7 +504,7 @@ def extract_custom_tables_col_count(df, table_defs, header_offset=1, min_header_
                                     table[col] = pd.to_numeric(
                                         table[col], errors="coerce"
                                     ).fillna(0)
-                                except:
+                                except (ValueError, TypeError):
                                     table[col] = table[col].fillna("")
 
                         print_normal(
@@ -663,7 +719,7 @@ def extract_no_title_tables_dynamic_headers(
                     table = table.sort_values(by=date_col, ascending=True).reset_index(
                         drop=True
                     )
-            except:
+            except (ValueError, TypeError):
                 pass  # If date parsing fails, continue without sorting
 
     table = table.reset_index(drop=True)
@@ -861,7 +917,11 @@ def apply_calculated_columns(table, calculated_columns_config):
                 result_table[col_name] = result_table[source_col].expanding().mean()
 
             elif calc_type == "cumulative_sum":
-                result_table[col_name] = result_table[source_col].cumsum()
+                # Convert to numeric, replacing non-numeric values with 0
+                numeric_series = pd.to_numeric(
+                    result_table[source_col], errors="coerce"
+                ).fillna(0)
+                result_table[col_name] = numeric_series.cumsum()
 
             elif calc_type == "cumulative_count":
                 if calc_config.get("condition"):
@@ -938,6 +998,21 @@ def apply_calculated_columns(table, calculated_columns_config):
                     )
                     continue
 
+            elif calc_type == "hebrew_month_conversion":
+                # Convert abbreviated Hebrew months to full Hebrew month names
+                if source_col and source_col in result_table.columns:
+                    result_table[col_name] = result_table[source_col].apply(
+                        convert_hebrew_month_abbreviation
+                    )
+                    print_success(
+                        f"         Successfully converted Hebrew months in column '{col_name}'"
+                    )
+                else:
+                    print_error(
+                        f"         ERROR: Source column '{source_col}' not found for Hebrew month conversion"
+                    )
+                    continue
+
             else:
                 print_error(f"         ERROR: Unknown calculation type '{calc_type}'")
                 continue
@@ -989,6 +1064,250 @@ def export_to_csv(table, sheet_name, out_path, title, file):
         print_error(f"Error saving table {title}: {str(e)}")
 
 
+def find_table_by_text_search(df, search_text, exclude_year=True, start_row=0):
+    """
+    Find a table by searching for specific text in Excel cells.
+
+    Args:
+        df: pandas DataFrame (Excel sheet)
+        search_text: Text to search for (e.g., "פילוח סוגי ולידציות")
+        exclude_year: If True, ignore year numbers in the search (e.g., "2025")
+        start_row: Row to start searching from (0-based)
+
+    Returns:
+        int: Row number where the text was found, or -1 if not found
+    """
+    if not search_text or pd.isna(search_text):
+        return -1
+
+    print_normal(f"      Searching for text pattern: '{search_text}'")
+
+    # Clean search text - remove year if exclude_year is True
+    clean_search_text = search_text
+    if exclude_year:
+        import re
+
+        # Remove 4-digit years from search text
+        clean_search_text = re.sub(r"\d{4}", "", search_text).strip()
+        print_normal(f"      Cleaned search text (year removed): '{clean_search_text}'")
+
+    # Search through the DataFrame
+    for row_idx in range(start_row, len(df)):
+        row = df.iloc[row_idx]
+        for col_idx, cell_value in enumerate(row):
+            if pd.notna(cell_value):
+                cell_str = str(cell_value).strip()
+
+                # Clean the cell value if exclude_year is True
+                if exclude_year:
+                    cell_clean = re.sub(r"\d{4}", "", cell_str).strip()
+                else:
+                    cell_clean = cell_str
+
+                # Check if the cleaned cell contains the cleaned search text
+                if clean_search_text in cell_clean:
+                    print_success(
+                        f"      Found text at row {row_idx}, col {col_idx}: '{cell_str}'"
+                    )
+                    return row_idx
+
+    print_warning(f"      Text pattern '{search_text}' not found")
+    return -1
+
+
+def extract_concatenated_tables(df, concatenate_config, custom_headers=None):
+    """
+    Extract two tables and concatenate them vertically.
+
+    Args:
+        df: pandas DataFrame (Excel sheet)
+        concatenate_config: Configuration for table concatenation
+        custom_headers: Optional custom headers to apply
+
+    Returns:
+        pandas DataFrame: Concatenated table or None if extraction fails
+    """
+    try:
+        first_config = concatenate_config.get("first_table", {})
+        second_config = concatenate_config.get("second_table", {})
+
+        if not first_config or not second_config:
+            print_error("      Missing first_table or second_table configuration")
+            return None
+
+        # Extract first table
+        first_table = None
+        if "start_row" in first_config:
+            start_row = first_config["start_row"]
+            select_columns = first_config.get("select_columns", [])
+
+            print_normal(f"      Extracting first table from row {start_row}")
+            first_table = extract_no_title_tables_dynamic_headers(df, start_row)
+
+            if first_table is not None and select_columns:
+                # Select only specified columns
+                available_cols = [
+                    col for col in select_columns if col in first_table.columns
+                ]
+                if available_cols:
+                    first_table = first_table[available_cols]
+                    print_normal(
+                        f"      Selected columns from first table: {available_cols}"
+                    )
+                else:
+                    print_warning(
+                        f"      None of the specified columns {select_columns} found in first table"
+                    )
+                    print_normal(
+                        f"      Available columns: {list(first_table.columns)}"
+                    )
+
+            # Apply column renaming if specified
+            rename_columns = first_config.get("rename_columns", {})
+            if rename_columns and first_table is not None:
+                first_table = first_table.rename(columns=rename_columns)
+                print_normal(f"      Renamed columns in first table: {rename_columns}")
+
+        # Extract second table
+        second_table = None
+        if "search_title" in second_config:
+            search_text = second_config["search_title"]
+            exclude_year = second_config.get("exclude_year", True)
+
+            # Find the table by searching for text
+            found_row = find_table_by_text_search(df, search_text, exclude_year)
+            if found_row >= 0:
+                # Apply header offset if specified
+                header_offset = second_config.get("header_offset", 0)
+                start_row = found_row + header_offset
+                print_normal(
+                    f"      Found text at row {found_row}, extracting table from row {start_row} (offset: {header_offset})"
+                )
+                second_table = extract_no_title_tables_dynamic_headers(df, start_row)
+
+                if second_table is not None:
+                    select_columns = second_config.get("select_columns", "all")
+                    if select_columns != "all" and isinstance(select_columns, list):
+                        # Select only specified columns
+                        available_cols = [
+                            col for col in select_columns if col in second_table.columns
+                        ]
+                        if available_cols:
+                            second_table = second_table[available_cols]
+                            print_normal(
+                                f"      Selected columns from second table: {available_cols}"
+                            )
+
+                    # Apply column renaming if specified
+                    rename_columns = second_config.get("rename_columns", {})
+                    if rename_columns:
+                        second_table = second_table.rename(columns=rename_columns)
+                        print_normal(
+                            f"      Renamed columns in second table: {rename_columns}"
+                        )
+
+        # Check if both tables were extracted successfully
+        if first_table is None:
+            print_error("      Failed to extract first table")
+            return None
+
+        if second_table is None:
+            print_error("      Failed to extract second table")
+            return None
+
+        print_normal(f"      First table shape: {first_table.shape}")
+        print_normal(f"      Second table shape: {second_table.shape}")
+
+        # Concatenate tables vertically
+        try:
+            # For vertical concatenation, we need to ensure both tables have the same column structure
+            # The first table should have its column as the LAST column
+            # The second table should have all its columns first, then the first table's column
+
+            # Get the column from the first table (should be only one column)
+            first_table_col = list(first_table.columns)[0]
+
+            # Get all columns from the second table
+            second_table_cols = list(second_table.columns)
+
+            # Create the final column order: second table columns first, then first table column
+            final_columns = second_table_cols + [first_table_col]
+
+            # Create the concatenated table by adding the first table column to the second table
+            concatenated_table = second_table.copy()
+
+            # Add the first table column to the second table with empty values
+            concatenated_table[first_table_col] = ""
+
+            # Now merge the first table data with the second table data
+            # We need to match the rows properly - the first table has cumulative change percentages
+            # that should be added to the corresponding validation data rows
+
+            # Get the first table data as a list
+            first_table_values = first_table[first_table_col].tolist()
+
+            # Skip the first row if configured to do so
+            skip_first_row = first_config.get("skip_first_row", False)
+            if skip_first_row and len(first_table_values) > 0:
+                first_table_values = first_table_values[1:]
+                print_normal(
+                    f"      Skipped first row from first table (skip_first_row=True)"
+                )
+
+            print_normal(
+                f"      Using {len(first_table_values)} values from first table"
+            )
+
+            # Add the first table values to the corresponding rows in the second table
+            # If the first table has more rows than the second table, we'll add them as separate rows
+            for i, value in enumerate(first_table_values):
+                if i < len(concatenated_table):
+                    # Update existing row with the cumulative change value
+                    concatenated_table.iloc[
+                        i, concatenated_table.columns.get_loc(first_table_col)
+                    ] = value
+                else:
+                    # Add new row if first table has more rows than second table
+                    new_row = {
+                        col: "" for col in second_table_cols
+                    }  # Empty values for second table columns
+                    new_row[first_table_col] = value  # Value from first table
+
+                    # Add the new row to the concatenated table
+                    concatenated_table = pd.concat(
+                        [concatenated_table, pd.DataFrame([new_row])], ignore_index=True
+                    )
+
+            # Ensure column order is correct
+            concatenated_table = concatenated_table[final_columns]
+
+            print_success(
+                f"      Successfully concatenated tables: {len(concatenated_table)} total rows"
+            )
+            print_normal(
+                f"      Final columns before custom headers: {list(concatenated_table.columns)}"
+            )
+
+            # Apply custom headers if provided
+            if custom_headers and len(custom_headers) > 0:
+                print_normal(
+                    f"      Applying custom headers to concatenated table with {len(concatenated_table.columns)} columns"
+                )
+                concatenated_table = rename_table_columns(
+                    concatenated_table, custom_headers
+                )
+
+            return concatenated_table
+
+        except Exception as e:
+            print_error(f"      Error concatenating tables: {str(e)}")
+            return None
+
+    except Exception as e:
+        print_error(f"      Error in extract_concatenated_tables: {str(e)}")
+        return None
+
+
 def rename_table_columns(table, new_headers):
     """
     Rename table columns according to headers config
@@ -1036,11 +1355,35 @@ def rename_table_columns(table, new_headers):
             )
 
         else:
-            # More headers than columns - use only the first N headers
-            table.columns = new_headers[:num_original_cols]
+            # More headers than columns - add missing columns and use all headers
+            additional_headers = new_headers[num_original_cols:]
             print_normal(
-                f"      Used first {num_original_cols} headers, ignored {num_new_headers - num_original_cols} extra headers"
+                f"      Adding {len(additional_headers)} missing columns: {additional_headers}"
             )
+
+            # Add missing columns with empty values (only if they don't already exist)
+            for extra_header in additional_headers:
+                if extra_header not in table.columns:
+                    table[extra_header] = [""] * len(table)
+                    print_normal(
+                        f"      Added column '{extra_header}' with {len(table)} empty strings"
+                    )
+                else:
+                    print_normal(
+                        f"      Column '{extra_header}' already exists, skipping"
+                    )
+
+            # Now apply all headers - ensure we have the right number of columns
+            if len(table.columns) == len(new_headers):
+                table.columns = new_headers
+                print_normal(f"      Applied all {num_new_headers} headers")
+            else:
+                print_error(
+                    f"      Column count mismatch: table has {len(table.columns)} columns, but {len(new_headers)} headers provided"
+                )
+                # Use only the first N headers that match the column count
+                table.columns = new_headers[: len(table.columns)]
+                print_normal(f"      Applied first {len(table.columns)} headers")
 
         print_normal(f"      Final columns: {list(table.columns)}")
         return table

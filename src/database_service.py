@@ -12,8 +12,8 @@ from datetime import datetime
 from typing import List, Dict, Optional, Union, Any
 
 # Import from same directory (src/)
-from logger import print_success, print_error, print_warning, print_normal
-from config_manager import get_database_config
+from src.logger import print_success, print_error, print_warning, print_normal
+from src.config_manager import get_database_config
 
 
 class DatabaseService:
@@ -21,11 +21,20 @@ class DatabaseService:
     Database service using psycopg2 for batch processing
     """
 
-    def __init__(self, db_config: Dict):
+    def __init__(self, db_config: Dict[str, Any]):
+        """Initialize the database service.
+
+        Args:
+            db_config: Database configuration dictionary containing connection parameters.
+        """
         self.db_config = db_config
 
-    def get_connection(self):
-        """Get direct psycopg2 connection"""
+    def get_connection(self) -> Optional[Any]:
+        """Get direct psycopg2 connection.
+
+        Returns:
+            psycopg2 connection object if successful, None if failed.
+        """
         try:
             conn = psycopg2.connect(
                 host=self.db_config["host"],
@@ -110,7 +119,7 @@ class DatabaseService:
                         try:
                             pd.to_datetime(str_val, dayfirst=True, errors="raise")
                             date_like_count += 1
-                        except:
+                        except (ValueError, TypeError):
                             pass
 
                 # If most values look like dates, convert the column
@@ -571,6 +580,8 @@ class DatabaseService:
         primary_keys: List[str],
         skip_empty_updates: bool = False,
         explicit_table_name: Optional[str] = None,
+        export_to_db: bool = True,
+        output_path: str = "data/output",
     ) -> tuple[bool, str]:
         """
         Main export function
@@ -595,6 +606,10 @@ class DatabaseService:
             else self._sanitize_table_name(table_title)
         )
 
+        if not export_to_db:
+            # Export to CSV instead of database
+            return self._export_to_csv(df, table_title, output_path)
+
         logic_type = "MERGE MODE" if skip_empty_updates else "STANDARD MODE"
         print_normal(
             f"Exporting '{table_title}' to '{db_table_name}' using {logic_type}"
@@ -615,6 +630,39 @@ class DatabaseService:
                 error_msg += f" (PostgreSQL code: {e.pgcode})"
             if hasattr(e, "pgerror"):
                 error_msg += f" (PostgreSQL error: {e.pgerror})"
+            return False, error_msg
+
+    def _export_to_csv(
+        self, df: pd.DataFrame, table_title: str, output_path: str
+    ) -> tuple[bool, str]:
+        """Export DataFrame to CSV file"""
+        try:
+            import os
+            import re
+
+            # Create output directory if it doesn't exist
+            os.makedirs(output_path, exist_ok=True)
+
+            # Sanitize filename
+            safe_title = re.sub(r"[^\w\s-]", "_", table_title)
+            safe_title = re.sub(r"[\s-]+", "_", safe_title)
+            safe_title = safe_title.strip("_").lower()
+
+            # Generate CSV filename
+            csv_filename = f"{safe_title}.csv"
+            csv_path = os.path.join(output_path, csv_filename)
+
+            # Export to CSV
+            df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+            print_success(f"Exported '{table_title}' to CSV: {csv_path}")
+            print_normal(f"CSV contains {len(df)} rows and {len(df.columns)} columns")
+
+            return True, ""
+
+        except Exception as e:
+            error_msg = f"CSV export failed for table '{table_title}': {str(e)}"
+            print_error(error_msg)
             return False, error_msg
 
     def create_file_processing_record(

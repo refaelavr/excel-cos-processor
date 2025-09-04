@@ -29,8 +29,19 @@ CONFIGURATION KEYS EXPLANATION:
 ------------------------------
 
 FILE LEVEL:
-- "Excel File Name": The exact name of the Excel file (including .xlsx extension)
-  This is used to match incoming files for processing.
+- "Excel File Name": The base name of the Excel file (without .xlsx extension)
+  This is used to match incoming files for processing. The system automatically
+  handles filename variations including:
+  * Date patterns: DD-MM-YYYY, DD.MM.YYYY, DD/MM/YYYY
+  * Timestamps: _YYYYMMDD_HHMMSS
+  * Extra numbers and suffixes: -1, -7, 0, 1, 7, etc.
+  * Hebrew month names: ינואר, פברואר, מרץ, etc.
+  
+  Examples of files that will match "ניתוח קנסות VM אקסל":
+  * ניתוח קנסות VM אקסל03-09-2025.xlsx
+  * ניתוח קנסות VM אקסל04-09-20250.xlsx
+  * ניתוח קנסות VM אקסל03-09-2025-7.xlsx
+  * ניתוח קנסות VM אקסל03-09-2025-1.xlsx
 
 SHEET LEVEL:
 - "Sheet Name": The exact name of the worksheet in the Excel file
@@ -63,7 +74,8 @@ NO_TITLE_TABLES SECTION:
 - "no_title_tables": List of tables without headers to extract
   Each no_title_table object contains:
   - "title": Internal name for the table
-  - "start_row": Row number (0-based) where table data starts
+  - "start_row": Row number (0-based) where table data starts (for standard type)
+  - "type": Table type - "standard" (default) or "concatenate_tables"
   - "export_to_db": Boolean - whether to export to database
   - "table_name": Database table name
   - "primary_keys": List of primary key column names
@@ -71,6 +83,21 @@ NO_TITLE_TABLES SECTION:
   - "columns_to_exclude": List of column names to exclude from processing
   - "headers": List of column names for the table
   - "calculated_columns": List of calculated columns
+  - "concatenate_config": Configuration for concatenate_tables type (see below)
+
+CONCATENATE_TABLES TYPE:
+- "type": "concatenate_tables" - Extract and concatenate two tables vertically
+- "concatenate_config": Configuration object containing:
+  - "first_table": Configuration for first table
+    - "start_row": Row number (0-based) where first table starts
+    - "select_columns": List of column names to extract from first table
+    - "rename_columns": Dictionary mapping old column names to new names
+  - "second_table": Configuration for second table
+    - "search_title": Text pattern to search for (e.g., "פילוח סוגי ולידציות")
+    - "exclude_year": Boolean - ignore year numbers in search (default: True)
+    - "select_columns": "all" or list of column names to extract
+    - "rename_columns": Dictionary mapping old column names to new names
+    - "header_offset": Number of rows to skip after finding the search title (default: 0)
 
 CALCULATED_COLUMNS SECTION:
 - "calculated_columns": List of columns to calculate/derive
@@ -871,5 +898,63 @@ FILE_CONFIG = {
                 }
             ],
         },
+    },
+    "דוח תשומות תפוקות": {
+        "ולידציות": {
+            "key_values": [],
+            "tables": [],
+            "no_title_tables": [
+                {
+                    "title": "validation_report_concatenated",
+                    "type": "concatenate_tables",
+                    "export_to_db": True,
+                    "table_name": "validation",
+                    "primary_keys": [
+                        "year",
+                        "month",
+                    ],
+                    "headers": [
+                        "year",
+                        "month",
+                        "regular_validation",
+                        "app_validation",
+                        "total_validation",
+                        "per_regular_validation",
+                        "per_app_validation",
+                        "comulative_change_per",
+                    ],
+                    "concatenate_config": {
+                        "first_table": {
+                            "start_row": 5,  # A6 = row 5 (0-based)
+                            "select_columns": ["שינוי באחוזים מצטבר"],
+                            "rename_columns": {
+                                "שינוי באחוזים מצטבר": "comulative_change_per"
+                            },
+                            "skip_first_row": True,  # Skip the first row (total row)
+                        },
+                        "second_table": {
+                            "search_title": "פילוח סוגי ולידציות",  # Search for this text
+                            "exclude_year": True,  # Ignore year in search
+                            "select_columns": "all",  # All columns
+                            "header_offset": 1,  # Start table extraction 1 row after finding the title
+                        },
+                    },
+                    "calculated_columns": [
+                        {
+                            "name": "total_validation_cumulative",
+                            "type": "cumulative_sum",
+                            "source_column": "total_validation",
+                            "description": "Cumulative sum of all months up to current month",
+                        },
+                        {
+                            "name": "month",
+                            "type": "hebrew_month_conversion",
+                            "source_column": "month",
+                            "description": "Convert abbreviated Hebrew months to full Hebrew month names",
+                        },
+                    ],
+                }
+            ],
+        }
     },
 }
