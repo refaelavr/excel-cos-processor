@@ -11,6 +11,11 @@ from pathlib import Path
 from datetime import datetime
 import shutil
 
+# Constants
+DEFAULT_BATCH_SIZE = 1000
+DEFAULT_DATE_THRESHOLD = 0.5  # 50% threshold for date column detection
+MAX_SAMPLE_SIZE = 10  # Maximum number of values to sample for type detection
+
 # Import from same directory (src/)
 from src.config_manager import ConfigManager, get_config
 from src.extractors import (
@@ -21,6 +26,7 @@ from src.extractors import (
     apply_calculated_columns,
     rename_table_columns,
     merge_tables,
+    extract_concatenated_tables,
 )
 
 
@@ -32,11 +38,21 @@ class ExcelProcessingService:
     by cleaning the filename and matching against configuration keys.
     """
 
-    def __init__(self, config_manager: Optional[ConfigManager] = None, logger=None):
+    def __init__(
+        self,
+        config_manager: Optional[ConfigManager] = None,
+        logger: Optional[Any] = None,
+    ):
+        """Initialize the Excel processing service.
+
+        Args:
+            config_manager: Configuration manager instance. If None, uses default config.
+            logger: Logger instance for logging operations. If None, uses print statements.
+        """
         self.config = config_manager or get_config()
         self.logger = logger
-        self.processed_files = []
-        self.processing_stats = {
+        self.processed_files: List[str] = []
+        self.processing_stats: Dict[str, int] = {
             "files_processed": 0,
             "tables_extracted": 0,
             "rows_processed": 0,
@@ -64,6 +80,7 @@ class ExcelProcessingService:
         - Standalone numbers: 13.7, 2024, etc.
         - Hebrew month names: ינואר, פברואר, מרץ, אפריל, מאי, יוני, יולי, אוגוסט, ספטמבר, אוקטובר, נובמבר, דצמבר
         - Hebrew month with "חודש" prefix: חודש מאי, חודש יוני, etc.
+        - Extra numbers and suffixes: -1, -7, 0, 1, 7, etc.
 
         Args:
             filename: Original filename that may contain date patterns
@@ -78,6 +95,9 @@ class ExcelProcessingService:
             "סטטוס אי ביצוע בזמן אמת - YIT - נתונים להיום26-08-2025 21-15-00.xlsx" → "סטטוס אי ביצוע בזמן אמת - YIT - נתונים להיום"
             "מהירות מסחרית הסכם משרד התחבורה יוני.xlsx" → "מהירות מסחרית הסכם משרד התחבורה"
             "ניתוח קנסות VM חודש מאי.xlsx" → "ניתוח קנסות VM"
+            "ניתוח קנסות VM אקסל04-09-20250.xlsx" → "ניתוח קנסות VM אקסל"
+            "ניתוח קנסות VM אקסל03-09-2025-7.xlsx" → "ניתוח קנסות VM אקסל"
+            "ניתוח קנסות VM אקסל03-09-2025-1.xlsx" → "ניתוח קנסות VM אקסל"
         """
         clean_name = filename
 
@@ -100,8 +120,13 @@ class ExcelProcessingService:
 
         # Step 4: Remove date patterns at end (without time)
         # Matches: DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY with optional leading space
+        # Also handles cases with extra digits like: DD-MM-YYYY0, DD-MM-YYYY-1, etc.
         clean_name = re.sub(
-            r"\s*\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}$", "", clean_name
+            r"\s*\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}\d*$", "", clean_name
+        )
+        # Also remove patterns with trailing dashes and numbers
+        clean_name = re.sub(
+            r"\s*\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}-\d+$", "", clean_name
         )
 
         # Step 5: Remove standalone numbers/partial dates at end
@@ -146,7 +171,21 @@ class ExcelProcessingService:
         # Additional cleanup: Remove standalone "חודש" if it remains
         clean_name = re.sub(r"\s*חודש\s*", " ", clean_name)
 
-        # Step 7: Clean up extra whitespace
+        # Step 7: Remove extra numbers and suffixes at the end
+        # This handles cases like: "ניתוח קנסות VM אקסל04-09-20250" → "ניתוח קנסות VM אקסל"
+        # Or: "ניתוח קנסות VM אקסל03-09-2025-7" → "ניתוח קנסות VM אקסל"
+        # Or: "ניתוח קנסות VM אקסל03-09-2025-1" → "ניתוח קנסות VM אקסל"
+
+        # Remove patterns like: -1, -7, -12, etc. (dash followed by numbers)
+        clean_name = re.sub(r"-\d+$", "", clean_name)
+
+        # Remove patterns like: 0, 1, 7, 12, etc. (standalone numbers at the end)
+        clean_name = re.sub(r"\d+$", "", clean_name)
+
+        # Remove any remaining trailing dashes or underscores
+        clean_name = re.sub(r"[-_]+$", "", clean_name)
+
+        # Step 8: Clean up extra whitespace
         clean_name = clean_name.strip()
 
         return clean_name
@@ -553,16 +592,25 @@ class ExcelProcessingService:
                     table, table_def, key_values, key_values_def, file_level_key_values
                 )
 
-                # Export to database if configured
-                if (
-                    table_def.get("export_to_db", False)
-                    and self.config.processing.enable_database
-                ):
+                # Export table (to database or CSV based on configuration)
+                export_to_db = table_def.get("export_to_db", False)
+                if export_to_db and self.config.processing.enable_database:
+                    # Export to database
                     db_success, db_error = self._export_table_to_database(
                         processed_table, title, table_def
                     )
                     if not db_success:
                         # Store database error for later reporting
+                        if not hasattr(self, "database_errors"):
+                            self.database_errors = []
+                        self.database_errors.append(f"{title}: {db_error}")
+                elif not export_to_db:
+                    # Export to CSV
+                    db_success, db_error = self._export_table_to_database(
+                        processed_table, title, table_def
+                    )
+                    if not db_success:
+                        # Store export error for later reporting
                         if not hasattr(self, "database_errors"):
                             self.database_errors = []
                         self.database_errors.append(f"{title}: {db_error}")
@@ -596,19 +644,32 @@ class ExcelProcessingService:
 
         for no_title_table in no_title_tables_def:
             title = no_title_table["title"]
-            start_row = no_title_table["start_row"]
+            table_type = no_title_table.get(
+                "type", "standard"
+            )  # Default to standard type
 
-            # Extract table with all parameters
-            table = extract_no_title_tables_dynamic_headers(
-                df,
-                start_row,
-                custom_headers=no_title_table.get("headers"),
-                fill_na=no_title_table.get("fill_na", False),
-                flat_table=no_title_table.get("flat_table", False),
-                flat_by=no_title_table.get("flat_by", "day"),
-                data_date=data_date_for_flattening,
-                columns_to_exclude=no_title_table.get("columns_to_exclude"),
-            )
+            # Handle concatenate_tables type
+            if table_type == "concatenate_tables":
+                table = self._process_concatenate_tables(
+                    df,
+                    no_title_table,
+                    key_values,
+                    key_values_def,
+                    file_level_key_values,
+                )
+            else:
+                # Standard no-title table processing
+                start_row = no_title_table["start_row"]
+                table = extract_no_title_tables_dynamic_headers(
+                    df,
+                    start_row,
+                    custom_headers=no_title_table.get("headers"),
+                    fill_na=no_title_table.get("fill_na", False),
+                    flat_table=no_title_table.get("flat_table", False),
+                    flat_by=no_title_table.get("flat_by", "day"),
+                    data_date=data_date_for_flattening,
+                    columns_to_exclude=no_title_table.get("columns_to_exclude"),
+                )
 
             if table is None:
                 self._log(f"    No-title table '{title}': Not found", "WARNING")
@@ -644,16 +705,25 @@ class ExcelProcessingService:
                     file_level_key_values,
                 )
 
-                # Export to database if configured
-                if (
-                    no_title_table.get("export_to_db", False)
-                    and self.config.processing.enable_database
-                ):
+                # Export table (to database or CSV based on configuration)
+                export_to_db = no_title_table.get("export_to_db", False)
+                if export_to_db and self.config.processing.enable_database:
+                    # Export to database
                     db_success, db_error = self._export_table_to_database(
                         processed_table, title, no_title_table
                     )
                     if not db_success:
                         # Store database error for later reporting
+                        if not hasattr(self, "database_errors"):
+                            self.database_errors = []
+                        self.database_errors.append(f"{title}: {db_error}")
+                elif not export_to_db:
+                    # Export to CSV
+                    db_success, db_error = self._export_table_to_database(
+                        processed_table, title, no_title_table
+                    )
+                    if not db_success:
+                        # Store export error for later reporting
                         if not hasattr(self, "database_errors"):
                             self.database_errors = []
                         self.database_errors.append(f"{title}: {db_error}")
@@ -663,6 +733,42 @@ class ExcelProcessingService:
             tables_processed += 1
 
         return tables_processed
+
+    def _process_concatenate_tables(
+        self,
+        df: pd.DataFrame,
+        table_config: Dict,
+        key_values: Dict,
+        key_values_def: List,
+        file_level_key_values: Dict,
+    ) -> pd.DataFrame:
+        """Process concatenate_tables type - extract and concatenate two tables"""
+        try:
+            concatenate_config = table_config.get("concatenate_config", {})
+            if not concatenate_config:
+                self._log("      ERROR: No concatenate_config found", "ERROR")
+                return None
+
+            self._log("      Processing concatenate_tables type", "INFO")
+
+            # Extract concatenated table
+            table = extract_concatenated_tables(
+                df, concatenate_config, custom_headers=table_config.get("headers")
+            )
+
+            if table is None:
+                self._log("      ERROR: Failed to extract concatenated tables", "ERROR")
+                return None
+
+            self._log(
+                f"      Successfully extracted concatenated table: {len(table)} rows",
+                "SUCCESS",
+            )
+            return table
+
+        except Exception as e:
+            self._log(f"      ERROR in _process_concatenate_tables: {str(e)}", "ERROR")
+            return None
 
     def _process_table_data(
         self,
@@ -751,6 +857,7 @@ class ExcelProcessingService:
                 primary_keys,
                 skip_empty_updates=table_config.get("skip_empty_updates", False),
                 explicit_table_name=table_config.get("table_name"),
+                export_to_db=table_config.get("export_to_db", True),
             )
 
             if success:
