@@ -36,7 +36,7 @@ FILE LEVEL:
   * Timestamps: _YYYYMMDD_HHMMSS
   * Extra numbers and suffixes: -1, -7, 0, 1, 7, etc.
   * Hebrew month names: ינואר, פברואר, מרץ, etc.
-  
+
   Examples of files that will match "ניתוח קנסות VM אקסל":
   * ניתוח קנסות VM אקסל03-09-2025.xlsx
   * ניתוח קנסות VM אקסל04-09-20250.xlsx
@@ -683,9 +683,10 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours_summary",
                     "primary_keys": ["month", "id_num"],
                     "add_keys": True,
-                    "columns_to_exclude": ["שם נהג", "מספר אישי"],  # Drop columns
+                    "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
+                        "full_name",
                         "zone",
                         "billable_hours",
                         "avg_billable_daily_hours",
@@ -725,9 +726,10 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours",
                     "primary_keys": ["month", "id_num", "day_type"],
                     "add_keys": True,
-                    "columns_to_exclude": ["שם נהג", "מספר אישי"],  # Drop columns
+                    "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
+                        "full_name",
                         "zone",
                         "billable_hours",
                         "avg_billable_daily_hours",
@@ -773,9 +775,10 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours",
                     "primary_keys": ["month", "id_num", "day_type"],
                     "add_keys": True,
-                    "columns_to_exclude": ["שם נהג", "מספר אישי"],  # Drop columns
+                    "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
+                        "full_name",
                         "zone",
                         "billable_hours",
                         "avg_billable_daily_hours",
@@ -821,9 +824,10 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours",
                     "primary_keys": ["month", "id_num", "day_type"],
                     "add_keys": True,
-                    "columns_to_exclude": ["שם נהג", "מספר אישי"],  # Drop columns
+                    "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
+                        "full_name",
                         "zone",
                         "billable_hours",
                         "avg_billable_daily_hours",
@@ -865,7 +869,7 @@ FILE_CONFIG = {
                     "columns_to_exclude": [
                         "זמן הרצת המודל",
                         "ספירה",
-                    ],  # Drop columns
+                    ],  # Drop columns (keeping שם פרטי and שם משפחה for calculated column)
                     "headers": [
                         "date",
                         "id_num",
@@ -888,6 +892,12 @@ FILE_CONFIG = {
                         "significant",
                     ],
                     "calculated_columns": [
+                        {
+                            "name": "full_name",
+                            "type": "custom_formula",
+                            "formula": "first_name + ' ' + last_name",
+                            "description": "Combined first name and last name",
+                        },
                         {
                             "name": "last_updated",
                             "type": "current_date",
