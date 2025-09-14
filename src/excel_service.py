@@ -27,6 +27,7 @@ from src.extractors import (
     rename_table_columns,
     merge_tables,
     extract_concatenated_tables,
+    extract_multi_concatenated_tables,
 )
 
 
@@ -542,6 +543,7 @@ class ExcelProcessingService:
 
         # Process no-title tables
         no_title_processed = self._process_no_title_tables(
+            xl,
             df,
             sheet_config,
             key_values,
@@ -625,6 +627,7 @@ class ExcelProcessingService:
 
     def _process_no_title_tables(
         self,
+        xl: pd.ExcelFile,
         df: pd.DataFrame,
         sheet_config: Dict,
         key_values: Dict,
@@ -652,6 +655,15 @@ class ExcelProcessingService:
             if table_type == "concatenate_tables":
                 table = self._process_concatenate_tables(
                     df,
+                    no_title_table,
+                    key_values,
+                    key_values_def,
+                    file_level_key_values,
+                )
+            # Handle multi_concatenate_tables type
+            elif table_type == "multi_concatenate_tables":
+                table = self._process_multi_concatenate_tables(
+                    xl,
                     no_title_table,
                     key_values,
                     key_values_def,
@@ -770,6 +782,71 @@ class ExcelProcessingService:
             self._log(f"      ERROR in _process_concatenate_tables: {str(e)}", "ERROR")
             return None
 
+    def _process_multi_concatenate_tables(
+        self,
+        xl: pd.ExcelFile,
+        table_config: Dict,
+        key_values: Dict,
+        key_values_def: List,
+        file_level_key_values: Dict,
+    ) -> pd.DataFrame:
+        """Process multi_concatenate_tables type - extract and concatenate multiple tables from multiple sheets cumulatively"""
+        try:
+            multi_concatenate_config = table_config.get("multi_concatenate_config", {})
+            if not multi_concatenate_config:
+                self._log("      ERROR: No multi_concatenate_config found", "ERROR")
+                return None
+
+            self._log(
+                "      Processing multi_concatenate_tables type cumulatively", "INFO"
+            )
+
+            # Collect all sheets data needed for processing
+            sheets_config = multi_concatenate_config.get("sheets", [])
+            all_sheets_data = {}
+
+            for sheet_config in sheets_config:
+                sheet_name = sheet_config.get("sheet_name")
+                if sheet_name in xl.sheet_names:
+                    df = xl.parse(sheet_name, header=None)
+                    all_sheets_data[sheet_name] = df
+                    self._log(f"      Loaded sheet data: {sheet_name}", "INFO")
+                else:
+                    self._log(
+                        f"      WARNING: Sheet '{sheet_name}' not found in file",
+                        "WARNING",
+                    )
+
+            if not all_sheets_data:
+                self._log("      ERROR: No sheets data loaded", "ERROR")
+                return None
+
+            # Extract multi-concatenated table using all sheets data
+            table = extract_multi_concatenated_tables(
+                all_sheets_data,
+                multi_concatenate_config,
+                custom_headers=table_config.get("headers"),
+                key_values=key_values,
+            )
+
+            if table is None:
+                self._log(
+                    "      ERROR: Failed to extract multi-concatenated tables", "ERROR"
+                )
+                return None
+
+            self._log(
+                f"      Successfully extracted multi-concatenated table: {len(table)} rows",
+                "SUCCESS",
+            )
+            return table
+
+        except Exception as e:
+            self._log(
+                f"      ERROR in _process_multi_concatenate_tables: {str(e)}", "ERROR"
+            )
+            return None
+
     def _process_table_data(
         self,
         table: pd.DataFrame,
@@ -795,7 +872,7 @@ class ExcelProcessingService:
                 f"      Applying {len(calculated_columns)} calculated columns", "INFO"
             )
             processed_table = apply_calculated_columns(
-                processed_table, calculated_columns
+                processed_table, calculated_columns, key_values
             )
 
         # Rename columns according to headers config
@@ -1076,40 +1153,3 @@ class ExcelProcessingService:
             "errors": 0,
         }
         self.processed_files = []
-
-
-def test_excel_service():
-    """Test Excel service functionality"""
-    try:
-        print("\n" + "=" * 50)
-        print("EXCEL SERVICE TEST")
-        print("=" * 50)
-
-        # Test service initialization
-        excel_service = ExcelProcessingService()
-        print("Excel service initialized")
-
-        # Test file discovery
-        excel_files = excel_service._get_valid_excel_files()
-        print(f"Found {len(excel_files)} valid Excel files")
-
-        if excel_files:
-            print("Files ready for processing:")
-            for file_path in excel_files:
-                print(f"  - {os.path.basename(file_path)}")
-        else:
-            print("No Excel files found in input directory")
-            print("  Put some Excel files in data/input/ to test processing")
-
-        return True
-
-    except Exception as e:
-        print(f"Excel service test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
-
-
-if __name__ == "__main__":
-    test_excel_service()
