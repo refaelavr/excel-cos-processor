@@ -814,13 +814,14 @@ def merge_tables(table1, table2, merge_on, table1_source, table2_source):
         return None
 
 
-def apply_calculated_columns(table, calculated_columns_config):
+def apply_calculated_columns(table, calculated_columns_config, key_values=None):
     """
     Apply calculated columns to a table based on configuration.
 
     Args:
         table: pandas DataFrame to add calculated columns to
         calculated_columns_config: List of calculation definitions from config
+        key_values: Dictionary of key values extracted from sheets (optional)
 
     Returns:
         DataFrame with additional calculated columns
@@ -966,6 +967,19 @@ def apply_calculated_columns(table, calculated_columns_config):
                     print_normal(
                         f"         Available columns: {list(result_table.columns)}"
                     )
+
+                    # Check if formula references a key_value first
+                    if key_values and formula in key_values:
+                        # Formula is a key_value reference
+                        key_value = key_values[formula]
+                        print_normal(
+                            f"         Using key_value '{formula}': {key_value}"
+                        )
+                        result_table[col_name] = [key_value] * len(result_table)
+                        print_success(
+                            f"         Successfully calculated column '{col_name}' from key_value"
+                        )
+                        continue
 
                     # Use regex with word boundaries to prevent partial replacements
                     import re
@@ -1392,3 +1406,209 @@ def rename_table_columns(table, new_headers):
         print_error(f"      Error renaming columns: {str(e)}")
         print_normal("      Keeping original column names")
         return table
+
+
+def extract_multi_concatenated_tables(
+    all_sheets_data, multi_concatenate_config, custom_headers=None, key_values=None
+):
+    """
+    Extract and concatenate multiple tables from multiple sheets cumulatively.
+
+    This function processes all sheets and tables in sequence, joining each new table
+    to the already combined result using the month column as the primary key.
+
+    Flow: sheet1 -> export table1 -> export table2 -> join with table1 ->
+          export table3 -> join with table1+2 -> export table4 -> join with table1+2+3 ->
+          sheet2 -> export table1 -> join with table1+2+3+4 from sheet1 ->
+          export table2 -> join with table1+2+3+4 from sheet1 and table1 from sheet2
+
+    Args:
+        all_sheets_data: Dictionary mapping sheet names to their DataFrames
+        multi_concatenate_config: Configuration for multi-concatenate processing
+        custom_headers: Custom headers to apply
+        key_values: Dictionary of key values extracted from sheets (e.g., year from cell G2)
+
+    Returns:
+        Combined DataFrame with all tables joined horizontally
+    """
+    try:
+        sheets_config = multi_concatenate_config.get("sheets", [])
+
+        if not sheets_config:
+            print_error(
+                "      No sheets configuration found in multi_concatenate_config"
+            )
+            return None
+
+        combined_table = None
+        table_counter = 0
+
+        print_normal(f"      Processing {len(sheets_config)} sheet(s) cumulatively")
+
+        # Process each sheet in order
+        for sheet_config in sheets_config:
+            sheet_name = sheet_config.get("sheet_name")
+            tables_config = sheet_config.get("tables", [])
+
+            print_normal(f"      Processing sheet: {sheet_name}")
+            print_normal(f"      Found {len(tables_config)} table(s) in sheet")
+
+            # Get the DataFrame for this sheet
+            if sheet_name not in all_sheets_data:
+                print_error(f"      Sheet '{sheet_name}' not found in provided data")
+                continue
+
+            df = all_sheets_data[sheet_name]
+
+            # Process each table in the sheet
+            for table_config in tables_config:
+                table_name = table_config.get("table_name", "unknown")
+                table_counter += 1
+                print_normal(f"        Processing table {table_counter}: {table_name}")
+
+                # Extract table based on configuration
+                table = None
+
+                if "start_row" in table_config:
+                    # First table in sheet - use start_row
+                    start_row = table_config["start_row"]
+                    print_normal(f"        Extracting table from start_row {start_row}")
+                    table = extract_no_title_tables_dynamic_headers(df, start_row)
+
+                elif "search_title" in table_config:
+                    # Subsequent tables - search for title
+                    search_text = table_config["search_title"]
+                    exclude_year = table_config.get("exclude_year", True)
+
+                    # Find the table by searching for text
+                    found_row = find_table_by_text_search(df, search_text, exclude_year)
+                    if found_row >= 0:
+                        # Apply header offset if specified
+                        header_offset = table_config.get("header_offset", 0)
+                        start_row = found_row + header_offset
+                        print_normal(
+                            f"        Found text at row {found_row}, extracting table from row {start_row} (offset: {header_offset})"
+                        )
+                        table = extract_no_title_tables_dynamic_headers(df, start_row)
+                    else:
+                        print_warning(
+                            f"        Could not find text pattern: {search_text}"
+                        )
+                        continue
+
+                if table is None:
+                    print_warning(f"        Failed to extract table: {table_name}")
+                    continue
+
+                print_normal(f"        Extracted table shape: {table.shape}")
+                print_normal(f"        Extracted table columns: {list(table.columns)}")
+
+                # Apply column selection if specified
+                select_columns = table_config.get("select_columns", "all")
+                if select_columns != "all" and isinstance(select_columns, list):
+                    available_cols = [
+                        col for col in select_columns if col in table.columns
+                    ]
+                    if available_cols:
+                        table = table[available_cols]
+                        print_normal(f"        Selected columns: {available_cols}")
+                    else:
+                        print_warning(
+                            f"        None of the specified columns {select_columns} found"
+                        )
+                        print_normal(
+                            f"        Available columns: {list(table.columns)}"
+                        )
+
+                # Apply column renaming if specified
+                rename_columns = table_config.get("rename_columns", {})
+                if rename_columns:
+                    table = table.rename(columns=rename_columns)
+                    print_normal(f"        Renamed columns: {rename_columns}")
+
+                # Join with the combined table
+                if combined_table is None:
+                    # First table - just use it as the starting point
+                    combined_table = table.copy()
+                    print_normal(
+                        f"        Starting with table {table_counter}. Shape: {combined_table.shape}"
+                    )
+                else:
+                    # Join with existing combined table
+                    print_normal(
+                        f"        Joining table {table_counter} with existing combined table..."
+                    )
+                    print_normal(f"        Table {table_counter} shape: {table.shape}")
+                    print_normal(
+                        f"        Combined table shape: {combined_table.shape}"
+                    )
+
+                    # Check for duplicate columns (excluding the join key)
+                    join_key = "חודש"
+                    if join_key not in table.columns:
+                        print_warning(
+                            f"        Join key '{join_key}' not found in table {table_counter}, skipping join"
+                        )
+                        continue
+
+                    if join_key not in combined_table.columns:
+                        print_warning(
+                            f"        Join key '{join_key}' not found in combined table, skipping join"
+                        )
+                        continue
+
+                    # Find duplicate columns (excluding the join key)
+                    duplicate_cols = []
+                    for col in table.columns:
+                        if col != join_key and col in combined_table.columns:
+                            duplicate_cols.append(col)
+
+                    # Rename duplicate columns in the new table
+                    if duplicate_cols:
+                        print_normal(
+                            f"        Found duplicate columns: {duplicate_cols}"
+                        )
+                        rename_dict = {
+                            col: f"{col}_table{table_counter}" for col in duplicate_cols
+                        }
+                        table = table.rename(columns=rename_dict)
+                        print_normal(
+                            f"        Renamed duplicate columns: {rename_dict}"
+                        )
+
+                    # Perform horizontal join
+                    try:
+                        combined_table = pd.merge(
+                            combined_table,
+                            table,
+                            on=join_key,
+                            how="outer",
+                            suffixes=("", f"_table{table_counter}"),
+                        )
+                        print_normal(
+                            f"        Successfully joined table {table_counter}. New shape: {combined_table.shape}"
+                        )
+                    except Exception as e:
+                        print_error(
+                            f"        Failed to join table {table_counter}: {str(e)}"
+                        )
+                        continue
+
+        if combined_table is None:
+            print_error("      No tables were successfully extracted")
+            return None
+
+        print_normal(f"      Final combined table shape: {combined_table.shape}")
+        print_normal(
+            f"      Final combined table columns: {list(combined_table.columns)}"
+        )
+
+        # Apply custom headers if provided
+        if custom_headers:
+            combined_table = rename_table_columns(combined_table, custom_headers)
+
+        return combined_table
+
+    except Exception as e:
+        print_error(f"      Error in extract_multi_concatenated_tables: {str(e)}")
+        return None

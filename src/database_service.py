@@ -883,39 +883,3 @@ def export_to_database(
     return db_service.export_table(
         table, title, primary_keys, skip_empty_updates, table_name
     )
-
-
-def test_database_service():
-    """Test database service functionality"""
-    try:
-        print("\n" + "=" * 50)
-        print("DATABASE SERVICE TEST")
-        print("=" * 50)
-
-        # Test configuration loading
-        db_config = get_database_config()
-        print(f"Database config loaded: {db_config['host']}")
-
-        # Test service initialization
-        db_service = DatabaseService(db_config)
-        print("Database service initialized")
-
-        # Test connection
-        success = db_service.test_connection()
-        if success:
-            print("Database connection test passed")
-        else:
-            print("Database connection test failed")
-
-        return success
-
-    except Exception as e:
-        print(f"Database service test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
-
-
-if __name__ == "__main__":
-    test_database_service()

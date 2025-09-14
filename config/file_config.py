@@ -99,6 +99,20 @@ CONCATENATE_TABLES TYPE:
     - "rename_columns": Dictionary mapping old column names to new names
     - "header_offset": Number of rows to skip after finding the search title (default: 0)
 
+MULTI_CONCATENATE_TABLES TYPE:
+- "type": "multi_concatenate_tables" - Extract and concatenate multiple tables from multiple sheets vertically
+- "multi_concatenate_config": Configuration object containing:
+  - "sheets": List of sheet configurations
+    - "sheet_name": Name of the sheet to process
+    - "tables": List of table configurations for this sheet
+      - "table_name": Internal name for the table
+      - "start_row": Row number (0-based) where table starts (for first table in sheet)
+      - "search_title": Text pattern to search for (for subsequent tables)
+      - "exclude_year": Boolean - ignore year numbers in search (default: True)
+      - "select_columns": "all" or list of column names to extract
+      - "rename_columns": Dictionary mapping old column names to new names
+      - "header_offset": Number of rows to skip after finding the search title (default: 0)
+
 CALCULATED_COLUMNS SECTION:
 - "calculated_columns": List of columns to calculate/derive
   Each calculated_column object contains:
@@ -935,18 +949,18 @@ FILE_CONFIG = {
                     ],
                     "concatenate_config": {
                         "first_table": {
-                            "start_row": 5,  # A6 = row 5 (0-based)
+                            "start_row": 5,  # Row 6 in Excel (0-based indexing)
                             "select_columns": ["שינוי באחוזים מצטבר"],
                             "rename_columns": {
                                 "שינוי באחוזים מצטבר": "comulative_change_per"
                             },
-                            "skip_first_row": True,  # Skip the first row (total row)
+                            "skip_first_row": True,  # Skip the total row
                         },
                         "second_table": {
-                            "search_title": "פילוח סוגי ולידציות",  # Search for this text
-                            "exclude_year": True,  # Ignore year in search
-                            "select_columns": "all",  # All columns
-                            "header_offset": 1,  # Start table extraction 1 row after finding the title
+                            "search_title": "פילוח סוגי ולידציות",
+                            "exclude_year": True,  # Ignore year variations in search
+                            "select_columns": "all",
+                            "header_offset": 1,  # Extract table starting 1 row after title
                         },
                     },
                     "calculated_columns": [
@@ -965,6 +979,193 @@ FILE_CONFIG = {
                     ],
                 }
             ],
-        }
+        },
+        "ניתוח קילומטרים": {
+            "key_values": [
+                {
+                    "title": "year",
+                    "row": 1,  # Row 2 in Excel (0-based indexing)
+                    "col": 7,  # Column H in Excel (0-based indexing)
+                    "add_to_table": True,
+                    "placement": "all_rows",
+                    "format": "%Y",  # Extract year from date format
+                }
+            ],
+            "tables": [],
+            "no_title_tables": [
+                {
+                    "title": "km_and_energy_analysis",
+                    "type": "multi_concatenate_tables",
+                    "export_to_db": True,
+                    "export_to_csv": False,
+                    "csv_filename": "km_and_energy_analysis.csv",
+                    "table_name": "km_and_energy_analysis",
+                    "add_keys": True,
+                    "primary_keys": ["year", "month"],
+                    "headers": [
+                        "month",
+                        "planned_km",
+                        "_",
+                        "actual_km",
+                        "__",
+                        "km_diff",
+                        "___",
+                        "____",
+                        "pt_planned_km",
+                        "_____",
+                        "pt_actual_km",
+                        "______",
+                        "pt_diff",
+                        "_______",
+                        "________",
+                        "admin_planned_km",
+                        "_________",
+                        "admin_actual_km",
+                        "__________",
+                        "admin_diff",
+                        "___________",
+                        "____________",
+                        "admin_percentage_planned",
+                        "_____________",
+                        "admin_percentage_actual",
+                        "______________",
+                        "admin_percentage_diff",
+                        "_______________",
+                        "electric_km",
+                        "________________",
+                        "charge_capacity",
+                        "_________________",
+                        "ev_count",
+                        "__________________",
+                        "fuel",
+                        "___________________",
+                        "____________________",
+                        "fuel_total",
+                        "_____________________",
+                        "______________________",
+                    ],
+                    "multi_concatenate_config": {
+                        "sheets": [
+                            {
+                                "sheet_name": "ניתוח קילומטרים",
+                                "tables": [
+                                    {
+                                        "table_name": "table_1",
+                                        "start_row": 6,  # Row 7 in Excel (0-based indexing)
+                                        "select_columns": "all",
+                                        "rename_columns": {},
+                                    },
+                                    {
+                                        "table_name": "table_2",
+                                        "search_title": 'תכנון אל מול ביצוע ק"מ תח"צ (באלפים)',
+                                        "exclude_year": True,
+                                        "select_columns": "all",
+                                        "rename_columns": {},
+                                        "header_offset": 1,
+                                    },
+                                    {
+                                        "table_name": "table_3",
+                                        "search_title": 'תכנון אל מול ביצוע ק"מ מנהלתי (באלפים)',
+                                        "exclude_year": True,
+                                        "select_columns": "all",
+                                        "rename_columns": {},
+                                        "header_offset": 1,
+                                    },
+                                    {
+                                        "table_name": "table_4",
+                                        "search_title": "שיעור מנהלתי תכנון אל מול ביצוע השוואה תכנון מול ביצוע שנה נוכחית מול אשתקד",
+                                        "exclude_year": True,
+                                        "select_columns": "all",
+                                        "rename_columns": {},
+                                        "header_offset": 1,
+                                    },
+                                ],
+                            },
+                            {
+                                "sheet_name": "אנרגיה",
+                                "tables": [
+                                    {
+                                        "table_name": "table_5",
+                                        "start_row": 7,  # Row 8 in Excel (0-based indexing)
+                                        "select_columns": "all",
+                                        "rename_columns": {},
+                                    },
+                                    {
+                                        "table_name": "table_6",
+                                        "search_title": "צריכת סולר השוואה בין שנה נוכחית לשנה אשתקד (באלפים):",
+                                        "exclude_year": True,
+                                        "select_columns": "all",
+                                        "rename_columns": {},
+                                        "header_offset": 1,
+                                    },
+                                ],
+                            },
+                        ]
+                    },
+                    "calculated_columns": [
+                        {
+                            "name": "month",
+                            "type": "hebrew_month_conversion",
+                            "source_column": "month",
+                            "description": "Convert abbreviated Hebrew months to full Hebrew month names",
+                        },
+                        {
+                            "name": "planned_km",
+                            "type": "custom_formula",
+                            "formula": "planned_km * 1000",
+                            "description": "Convert planned KM from thousands to units",
+                        },
+                        {
+                            "name": "actual_km",
+                            "type": "custom_formula",
+                            "formula": "actual_km * 1000",
+                            "description": "Convert actual KM from thousands to units",
+                        },
+                        {
+                            "name": "km_diff",
+                            "type": "custom_formula",
+                            "formula": "km_diff * 1000",
+                            "description": "Convert KM difference from thousands to units",
+                        },
+                        {
+                            "name": "pt_planned_km",
+                            "type": "custom_formula",
+                            "formula": "pt_planned_km * 1000",
+                            "description": "Convert PT planned KM from thousands to units",
+                        },
+                        {
+                            "name": "pt_actual_km",
+                            "type": "custom_formula",
+                            "formula": "pt_actual_km * 1000",
+                            "description": "Convert PT actual KM from thousands to units",
+                        },
+                        {
+                            "name": "pt_diff",
+                            "type": "custom_formula",
+                            "formula": "pt_diff * 1000",
+                            "description": "Convert PT difference from thousands to units",
+                        },
+                        {
+                            "name": "admin_planned_km",
+                            "type": "custom_formula",
+                            "formula": "admin_planned_km * 1000",
+                            "description": "Convert admin planned KM from thousands to units",
+                        },
+                        {
+                            "name": "admin_actual_km",
+                            "type": "custom_formula",
+                            "formula": "admin_actual_km * 1000",
+                            "description": "Convert admin actual KM from thousands to units",
+                        },
+                        {
+                            "name": "admin_diff",
+                            "type": "custom_formula",
+                            "formula": "admin_diff * 1000",
+                            "description": "Convert admin difference from thousands to units",
+                        },
+                    ],
+                }
+            ],
+        },
     },
 }
