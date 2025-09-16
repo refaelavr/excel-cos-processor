@@ -86,7 +86,9 @@ class FileProcessingService:
             if success:
                 self._update_processing_status(filename, "success", None, archive_path)
             else:
-                self._update_processing_status(filename, "failed", processing_error)
+                self._update_processing_status(
+                    filename, "failed", processing_error, archive_path
+                )
 
             # Calculate processing time
             processing_time = (datetime.now() - start_time).total_seconds()
