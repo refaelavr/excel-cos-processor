@@ -432,63 +432,18 @@ def extract_custom_tables_col_count(df, table_defs, header_offset=1, min_header_
                     header_row = df.iloc[header_idx, table_cols]
                     table = pd.DataFrame(data)
 
-                    # Apply custom headers if provided
+                    # Note: Custom headers will be applied later in the processing flow
                     if custom_headers and len(custom_headers) > 0:
-                        # Use custom headers, but only for the number of columns we have
                         num_cols = len(table.columns)
                         print_normal(
                             f"      Table has {num_cols} columns, custom_headers has {len(custom_headers)} headers"
                         )
-                        print_normal(f"      Custom headers: {custom_headers}")
-                        print_normal(f"      fill_na = {fill_na}")
+                        print_normal(
+                            f"      Custom headers will be applied later in processing flow"
+                        )
 
-                        if len(custom_headers) >= num_cols:
-                            table.columns = custom_headers[:num_cols]
-                            print_normal(
-                                f"      Applied custom headers: {custom_headers[:num_cols]}"
-                            )
-                        else:
-                            # If not enough custom headers, use original for remaining columns
-                            new_headers = custom_headers + list(
-                                header_row[len(custom_headers) : num_cols]
-                            )
-                            table.columns = new_headers
-                            print_normal(
-                                f"      Applied partial custom headers: {new_headers}"
-                            )
-
-                        # If we have more custom headers than actual columns, add empty columns
-                        if len(custom_headers) > num_cols:
-                            print_normal(
-                                f"      Adding {len(custom_headers) - num_cols} extra columns"
-                            )
-                            additional_headers = custom_headers[num_cols:]
-                            print_normal(
-                                f"      Additional headers to add: {additional_headers}"
-                            )
-
-                            for extra_header in additional_headers:
-                                if fill_na:
-                                    table[extra_header] = [0] * len(
-                                        table
-                                    )  # Fill entire column with zeros
-                                    print_normal(
-                                        f"      Added empty column '{extra_header}' filled with {len(table)} zeros"
-                                    )
-                                else:
-                                    table[extra_header] = [""] * len(
-                                        table
-                                    )  # Fill entire column with empty strings
-                                    print_normal(
-                                        f"      Added empty column '{extra_header}' filled with {len(table)} empty strings"
-                                    )
-
-                            print_normal(
-                                f"      Table now has {len(table.columns)} columns: {list(table.columns)}"
-                            )
-                    else:
-                        # Use original headers
-                        table.columns = header_row
+                    # Use original headers for now
+                    table.columns = header_row
 
                     # Handle fill_na for existing empty columns
                     if fill_na:
@@ -1302,13 +1257,10 @@ def extract_concatenated_tables(df, concatenate_config, custom_headers=None):
                 f"      Final columns before custom headers: {list(concatenated_table.columns)}"
             )
 
-            # Apply custom headers if provided
+            # Note: Custom headers will be applied later in the processing flow
             if custom_headers and len(custom_headers) > 0:
                 print_normal(
-                    f"      Applying custom headers to concatenated table with {len(concatenated_table.columns)} columns"
-                )
-                concatenated_table = rename_table_columns(
-                    concatenated_table, custom_headers
+                    f"      Custom headers will be applied later in processing flow"
                 )
 
             return concatenated_table
@@ -1603,9 +1555,11 @@ def extract_multi_concatenated_tables(
             f"      Final combined table columns: {list(combined_table.columns)}"
         )
 
-        # Apply custom headers if provided
+        # Note: Custom headers will be applied later in the processing flow
         if custom_headers:
-            combined_table = rename_table_columns(combined_table, custom_headers)
+            print_normal(
+                "      Custom headers will be applied later in processing flow"
+            )
 
         return combined_table
 
