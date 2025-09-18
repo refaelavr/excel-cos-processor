@@ -857,7 +857,10 @@ class ExcelProcessingService:
     ) -> pd.DataFrame:
         """Apply all processing steps to a table"""
 
-        self._log(f"First row before any processing: {table.iloc[0].to_dict()}")
+        # Check if table is empty to prevent IndexError
+        if table.empty:
+            self._log("      WARNING: Table is empty, skipping processing", "WARNING")
+            return table
 
         processed_table = table.copy()
 
@@ -867,10 +870,6 @@ class ExcelProcessingService:
                 processed_table, key_values, key_values_def
             )
             self._log("      Added key values", "INFO")
-
-        self._log(
-            f"First row after adding key values: {processed_table.iloc[0].to_dict()}"
-        )
 
         # Special handling for concatenate_tables and multi_concatenate_tables types
         if table_config.get("type") in [
@@ -890,9 +889,6 @@ class ExcelProcessingService:
                     "INFO",
                 )
                 processed_table = rename_table_columns(processed_table, custom_headers)
-                self._log(
-                    f"First row after renaming columns: {processed_table.iloc[0].to_dict()}"
-                )
 
             # Apply calculated columns AFTER renaming
             calculated_columns = table_config.get("calculated_columns")
@@ -903,9 +899,6 @@ class ExcelProcessingService:
                 )
                 processed_table = apply_calculated_columns(
                     processed_table, calculated_columns, key_values
-                )
-                self._log(
-                    f"First row after applying calculated columns: {processed_table.iloc[0].to_dict()}"
                 )
         else:
             # Normal processing for all other table types
@@ -920,19 +913,11 @@ class ExcelProcessingService:
                     processed_table, calculated_columns, key_values
                 )
 
-            self._log(
-                f"First row after applying calculated columns: {processed_table.iloc[0].to_dict()}"
-            )
-
             # Rename columns according to headers config
             custom_headers = table_config.get("headers")
             if custom_headers:
                 self._log("      Renaming columns according to headers config", "INFO")
                 processed_table = rename_table_columns(processed_table, custom_headers)
-
-            self._log(
-                f"First row after renaming columns: {processed_table.iloc[0].to_dict()}"
-            )
 
         # Add data date using file-level key_values (for shared report_date)
         if table_config.get("add_data_date", False):
