@@ -308,6 +308,27 @@ FILE_CONFIG = {
                     "placement": "last_row",
                 },
                 {
+                    "title": "arrival_and_departure_license",
+                    "row": 19,
+                    "col": 7,
+                    "add_to_table": True,
+                    "placement": "last_row",
+                },
+                {
+                    "title": "departure_only_license",
+                    "row": 19,
+                    "col": 8,
+                    "add_to_table": True,
+                    "placement": "last_row",
+                },
+                {
+                    "title": "arrival_only_license",
+                    "row": 19,
+                    "col": 9,
+                    "add_to_table": True,
+                    "placement": "last_row",
+                },
+                {
                     "title": "אחוז אי ביצוע נסיעות לתקופה - יום האתמול",
                     "row": 12,
                     "col": 0,
@@ -393,7 +414,7 @@ FILE_CONFIG = {
                 {
                     "title": "טבלה מסכמת חריגות",
                     "add_keys": False,
-                    "export_to_db": True,
+                    "export_to_db": False,
                     "table_name": "performance_monitoring_and_exceptions",
                     "primary_keys": ["date"],
                     "skip_empty_updates": False,
@@ -512,12 +533,15 @@ FILE_CONFIG = {
                         "non_performance_percentage",
                         "maintenance_non_performance_count",
                         "maintenance_non_performance_percent",
+                        "date",
+                        "open_task_percentage",
+                        "last_updated",
                     ],
                     "calculated_columns": [
                         {
                             "name": "open_task_percentage",
                             "type": "custom_formula",
-                            "formula": "(open_task_count / task_count)",
+                            "formula": "(open_task_count / task_count).fillna(0)",
                             "description": "Percentage of open tasks",
                         },
                         {
@@ -555,12 +579,14 @@ FILE_CONFIG = {
                         "zone",
                         "task_count",
                         "open_task_count",
-                        "open_task_percentage",
                         "canceled_task_count",
                         "non_performance",
                         "non_performance_percentage",
                         "maintenance_non_performance_count",
                         "maintenance_non_performance_percent",
+                        "date",
+                        "open_task_percentage",
+                        "last_updated",
                     ],
                     "add_keys": True,
                     "export_to_db": True,
@@ -570,7 +596,7 @@ FILE_CONFIG = {
                         {
                             "name": "open_task_percentage",
                             "type": "custom_formula",
-                            "formula": "(open_task_count / task_count)",
+                            "formula": "(open_task_count / task_count).fillna(0)",
                             "description": "Percentage of open tasks",
                         },
                         {
@@ -695,11 +721,12 @@ FILE_CONFIG = {
                     "start_row": 15,  # Row 16 in Excel (0-based)
                     "export_to_db": True,
                     "table_name": "net_and_gross_hours_summary",
-                    "primary_keys": ["month", "id_num"],
+                    "primary_keys": ["month", "id_num", "personal_id"],
                     "add_keys": True,
-                    "columns_to_exclude": ["מספר אישי"],  # Drop columns
+                    # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
+                        "personal_id",
                         "full_name",
                         "zone",
                         "billable_hours",
@@ -738,11 +765,12 @@ FILE_CONFIG = {
                     "start_row": 15,
                     "export_to_db": True,
                     "table_name": "net_and_gross_hours",
-                    "primary_keys": ["month", "id_num", "day_type"],
+                    "primary_keys": ["month", "id_num", "day_type", "personal_id"],
                     "add_keys": True,
-                    "columns_to_exclude": ["מספר אישי"],  # Drop columns
+                    # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
+                        "personal_id",
                         "full_name",
                         "zone",
                         "billable_hours",
@@ -787,11 +815,12 @@ FILE_CONFIG = {
                     "start_row": 15,
                     "export_to_db": True,
                     "table_name": "net_and_gross_hours",
-                    "primary_keys": ["month", "id_num", "day_type"],
+                    "primary_keys": ["month", "id_num", "day_type", "personal_id"],
                     "add_keys": True,
-                    "columns_to_exclude": ["מספר אישי"],  # Drop columns
+                    # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
+                        "personal_id",
                         "full_name",
                         "zone",
                         "billable_hours",
@@ -836,11 +865,12 @@ FILE_CONFIG = {
                     "start_row": 15,
                     "export_to_db": True,
                     "table_name": "net_and_gross_hours",
-                    "primary_keys": ["month", "id_num", "day_type"],
+                    "primary_keys": ["month", "id_num", "day_type", "personal_id"],
                     "add_keys": True,
-                    "columns_to_exclude": ["מספר אישי"],  # Drop columns
+                    # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
+                        "personal_id",
                         "full_name",
                         "zone",
                         "billable_hours",
@@ -997,7 +1027,7 @@ FILE_CONFIG = {
                     "title": "km_and_energy_analysis",
                     "type": "multi_concatenate_tables",
                     "export_to_db": True,
-                    "export_to_csv": False,
+                    "export_to_csv": True,
                     "csv_filename": "km_and_energy_analysis.csv",
                     "table_name": "km_and_energy_analysis",
                     "add_keys": True,

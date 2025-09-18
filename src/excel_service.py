@@ -856,6 +856,9 @@ class ExcelProcessingService:
         file_level_key_values: Dict = None,  # Optional file-level key_values
     ) -> pd.DataFrame:
         """Apply all processing steps to a table"""
+
+        self._log(f"First row before any processing: {table.iloc[0].to_dict()}")
+
         processed_table = table.copy()
 
         # Add key values if requested
@@ -865,21 +868,71 @@ class ExcelProcessingService:
             )
             self._log("      Added key values", "INFO")
 
-        # Apply calculated columns
-        calculated_columns = table_config.get("calculated_columns")
-        if calculated_columns:
+        self._log(
+            f"First row after adding key values: {processed_table.iloc[0].to_dict()}"
+        )
+
+        # Special handling for concatenate_tables and multi_concatenate_tables types
+        if table_config.get("type") in [
+            "concatenate_tables",
+            "multi_concatenate_tables",
+        ]:
             self._log(
-                f"      Applying {len(calculated_columns)} calculated columns", "INFO"
-            )
-            processed_table = apply_calculated_columns(
-                processed_table, calculated_columns, key_values
+                f"      Special processing for {table_config.get('type')} type", "INFO"
             )
 
-        # Rename columns according to headers config
-        custom_headers = table_config.get("headers")
-        if custom_headers:
-            self._log("      Renaming columns according to headers config", "INFO")
-            processed_table = rename_table_columns(processed_table, custom_headers)
+            # For concatenate_tables and multi_concatenate_tables, rename columns FIRST, then apply calculated columns
+            # This is because the formulas reference the renamed column names
+            custom_headers = table_config.get("headers")
+            if custom_headers:
+                self._log(
+                    "      Renaming columns according to headers config (BEFORE calculated columns)",
+                    "INFO",
+                )
+                processed_table = rename_table_columns(processed_table, custom_headers)
+                self._log(
+                    f"First row after renaming columns: {processed_table.iloc[0].to_dict()}"
+                )
+
+            # Apply calculated columns AFTER renaming
+            calculated_columns = table_config.get("calculated_columns")
+            if calculated_columns:
+                self._log(
+                    f"      Applying {len(calculated_columns)} calculated columns (AFTER renaming)",
+                    "INFO",
+                )
+                processed_table = apply_calculated_columns(
+                    processed_table, calculated_columns, key_values
+                )
+                self._log(
+                    f"First row after applying calculated columns: {processed_table.iloc[0].to_dict()}"
+                )
+        else:
+            # Normal processing for all other table types
+            # Apply calculated columns first, then rename columns
+            calculated_columns = table_config.get("calculated_columns")
+            if calculated_columns:
+                self._log(
+                    f"      Applying {len(calculated_columns)} calculated columns",
+                    "INFO",
+                )
+                processed_table = apply_calculated_columns(
+                    processed_table, calculated_columns, key_values
+                )
+
+            self._log(
+                f"First row after applying calculated columns: {processed_table.iloc[0].to_dict()}"
+            )
+
+            # Rename columns according to headers config
+            custom_headers = table_config.get("headers")
+            if custom_headers:
+                self._log("      Renaming columns according to headers config", "INFO")
+                processed_table = rename_table_columns(processed_table, custom_headers)
+
+            self._log(
+                f"First row after renaming columns: {processed_table.iloc[0].to_dict()}"
+            )
 
         # Add data date using file-level key_values (for shared report_date)
         if table_config.get("add_data_date", False):
