@@ -416,7 +416,7 @@ FILE_CONFIG = {
                 {
                     "title": "טבלה מסכמת חריגות",
                     "add_keys": False,
-                    "export_to_db": False,
+                    "export_to_db": True,
                     "table_name": "performance_monitoring_and_exceptions",
                     "primary_keys": ["date"],
                     "skip_empty_updates": False,
@@ -654,7 +654,7 @@ FILE_CONFIG = {
             "no_title_tables": [
                 {
                     "title": "commercial_speed_ministry_of_transportation_agreement",
-                    "start_row": 13,
+                    "start_row": 9,
                     "headers": ["date", "commercial_speed"],
                     "export_to_db": True,
                     "primary_keys": ["date"],
@@ -726,7 +726,7 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours_summary",
                     "primary_keys": ["month", "id_num", "personal_id"],
                     "add_keys": True,
-                    "fill_na": True,
+                    "fill_na": False,
                     # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
@@ -771,7 +771,7 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours",
                     "primary_keys": ["month", "id_num", "day_type", "personal_id"],
                     "add_keys": True,
-                    "fill_na": True,
+                    "fill_na": False,
                     # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
@@ -822,7 +822,7 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours",
                     "primary_keys": ["month", "id_num", "day_type", "personal_id"],
                     "add_keys": True,
-                    "fill_na": True,
+                    "fill_na": False,
                     # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
@@ -873,7 +873,7 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours",
                     "primary_keys": ["month", "id_num", "day_type", "personal_id"],
                     "add_keys": True,
-                    "fill_na": True,
+                    "fill_na": False,
                     # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
