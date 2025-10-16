@@ -726,6 +726,7 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours_summary",
                     "primary_keys": ["month", "id_num", "personal_id"],
                     "add_keys": True,
+                    "fill_na": True,
                     # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
@@ -770,6 +771,7 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours",
                     "primary_keys": ["month", "id_num", "day_type", "personal_id"],
                     "add_keys": True,
+                    "fill_na": True,
                     # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
@@ -820,6 +822,7 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours",
                     "primary_keys": ["month", "id_num", "day_type", "personal_id"],
                     "add_keys": True,
+                    "fill_na": True,
                     # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",
@@ -870,6 +873,7 @@ FILE_CONFIG = {
                     "table_name": "net_and_gross_hours",
                     "primary_keys": ["month", "id_num", "day_type", "personal_id"],
                     "add_keys": True,
+                    "fill_na": True,
                     # "columns_to_exclude": ["מספר אישי"],  # Drop columns
                     "headers": [
                         "id_num",

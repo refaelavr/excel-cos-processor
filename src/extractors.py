@@ -481,15 +481,33 @@ def extract_custom_tables_col_count(df, table_defs, header_offset=1, min_header_
                         numeric_cols = table.select_dtypes(include=["number"]).columns
                         table[numeric_cols] = table[numeric_cols].fillna(0)
 
-                        # For non-numeric columns, fill with empty string or 0 based on content
+                        # For non-numeric columns, only try to convert to numeric if they contain dashes or look numeric
                         for col in table.columns:
                             if col not in numeric_cols:
-                                # Try to convert to numeric, if possible fill with 0, otherwise empty string
-                                try:
-                                    table[col] = pd.to_numeric(
-                                        table[col], errors="coerce"
-                                    ).fillna(0)
-                                except (ValueError, TypeError):
+                                # Check if column contains dashes or looks like it should be numeric
+                                col_has_dashes = (
+                                    table[col]
+                                    .astype(str)
+                                    .str.contains("^-$", na=False)
+                                    .any()
+                                )
+                                col_looks_numeric = (
+                                    table[col]
+                                    .astype(str)
+                                    .str.match(r"^-?\d*\.?\d*$", na=False)
+                                    .any()
+                                )
+
+                                if col_has_dashes or col_looks_numeric:
+                                    # Only try to convert columns that contain dashes or look numeric
+                                    try:
+                                        table[col] = pd.to_numeric(
+                                            table[col], errors="coerce"
+                                        ).fillna(0)
+                                    except (ValueError, TypeError):
+                                        table[col] = table[col].fillna("")
+                                else:
+                                    # For text columns, just fill NaN with empty string
                                     table[col] = table[col].fillna("")
 
                         print_normal(
@@ -652,7 +670,33 @@ def extract_no_title_tables_dynamic_headers(
     # Handle fill_na for existing NaN values
     if fill_na:
         print_normal("      Filling NaN values")
-        table = table.fillna(0)
+        # Fill NaN values with 0 for numeric columns
+        numeric_cols = table.select_dtypes(include=["number"]).columns
+        table[numeric_cols] = table[numeric_cols].fillna(0)
+
+        # For non-numeric columns, only try to convert to numeric if they contain dashes or look numeric
+        for col in table.columns:
+            if col not in numeric_cols:
+                # Check if column contains dashes or looks like it should be numeric
+                col_has_dashes = (
+                    table[col].astype(str).str.contains("^-$", na=False).any()
+                )
+                col_looks_numeric = (
+                    table[col].astype(str).str.match(r"^-?\d*\.?\d*$", na=False).any()
+                )
+
+                if col_has_dashes or col_looks_numeric:
+                    # Only try to convert columns that contain dashes or look numeric
+                    try:
+                        table[col] = pd.to_numeric(table[col], errors="coerce").fillna(
+                            0
+                        )
+                    except (ValueError, TypeError):
+                        table[col] = table[col].fillna("")
+                else:
+                    # For text columns, just fill NaN with empty string
+                    table[col] = table[col].fillna("")
+
         print_normal("      Filled NaN values with zeros")
 
     # NOW apply custom headers (AFTER flattening)
