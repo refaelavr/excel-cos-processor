@@ -183,6 +183,7 @@ def extract_key_values(df, key_defs):
     key_defs: dict with keys and their location ({'row': x, 'col': y})
     Supports date formatting via 'format' parameter
     Supports Hebrew month parsing for format '%Y-%m-01'
+    Supports adding days to dates via 'add_days' parameter
     Returns a dict of {key: value}
     """
     results = {}
@@ -191,6 +192,7 @@ def extract_key_values(df, key_defs):
         row = key.get("row")
         col = key.get("col")
         date_format = key.get("format")  # Get date format if specified
+        add_days = key.get("add_days", 0)  # Get number of days to add (default: 0)
 
         if row is not None and col is not None:
             try:
@@ -316,6 +318,16 @@ def extract_key_values(df, key_defs):
                                         continue
 
                                 if parsed_date:
+                                    # Add days if specified
+                                    if add_days != 0:
+                                        from datetime import timedelta
+
+                                        parsed_date = parsed_date + timedelta(
+                                            days=add_days
+                                        )
+                                        print_normal(
+                                            f"      Added {add_days} days to date '{value}' -> '{parsed_date}'"
+                                        )
                                     formatted_value = parsed_date.strftime(date_format)
                                     print_normal(
                                         f"      Formatted date '{value}' -> '{formatted_value}' using format '{date_format}'"
@@ -329,6 +341,14 @@ def extract_key_values(df, key_defs):
                             elif hasattr(
                                 value, "strftime"
                             ):  # pandas datetime or datetime object
+                                # Add days if specified
+                                if add_days != 0:
+                                    from datetime import timedelta
+
+                                    value = value + timedelta(days=add_days)
+                                    print_normal(
+                                        f"      Added {add_days} days to datetime '{value}'"
+                                    )
                                 formatted_value = value.strftime(date_format)
                                 print_normal(
                                     f"      Formatted date '{value}' -> '{formatted_value}' using format '{date_format}'"
@@ -338,6 +358,16 @@ def extract_key_values(df, key_defs):
                                 # Try to convert to datetime first
                                 try:
                                     parsed_date = pd.to_datetime(value, dayfirst=True)
+                                    # Add days if specified
+                                    if add_days != 0:
+                                        from datetime import timedelta
+
+                                        parsed_date = parsed_date + timedelta(
+                                            days=add_days
+                                        )
+                                        print_normal(
+                                            f"      Added {add_days} days to pandas datetime '{value}' -> '{parsed_date}'"
+                                        )
                                     formatted_value = parsed_date.strftime(date_format)
                                     print_normal(
                                         f"      Formatted date '{value}' -> '{formatted_value}' using format '{date_format}'"

@@ -56,6 +56,7 @@ KEY_VALUES SECTION:
   - "add_to_table": Boolean - whether to include this value in table data
   - "placement": Where to place the value ("last_row", "all_rows", or omitted)
   - "format": Optional date format string (e.g., "%d/%m/%Y")
+  - "add_days": Optional number of days to add to the parsed date (e.g., 1 to add one day)
 
 TABLES SECTION:
 - "tables": List of tables that have headers to extract
@@ -154,7 +155,8 @@ EXAMPLE CONFIGURATION:
                     "col": 2,
                     "add_to_table": True,
                     "placement": "all_rows",
-                    "format": "%Y-%m-%d"
+                    "format": "%Y-%m-%d",
+                    "add_days": 0
                 }
             ],
             "tables": [
@@ -565,6 +567,7 @@ FILE_CONFIG = {
                     "add_to_table": True,
                     "placement": "all_rows",
                     "format": "%d/%m/%Y",
+                    "add_days": 1,
                 }
             ],
             "tables": [],  # Add col_count value if 2 tables are next to each other
