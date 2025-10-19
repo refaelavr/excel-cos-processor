@@ -53,6 +53,9 @@ class ExcelProcessingService:
         self.config = config_manager or get_config()
         self.logger = logger
         self.processed_files: List[str] = []
+        self.saved_year_value: Optional[str] = (
+            None  # Store year value for dynamic data sharing
+        )
         self.processing_stats: Dict[str, int] = {
             "files_processed": 0,
             "tables_extracted": 0,
@@ -890,6 +893,27 @@ class ExcelProcessingService:
                 )
                 processed_table = rename_table_columns(processed_table, custom_headers)
 
+            # Save year value from first row of year column if requested (AFTER headers are renamed)
+            if table_config.get("save_year_value", False):
+                if "year" in processed_table.columns and len(processed_table) > 0:
+                    year_value = processed_table["year"].iloc[0]
+                    if year_value is not None and not pd.isna(year_value):
+                        self.saved_year_value = str(year_value).strip()
+                        self._log(
+                            f"      Saved year value: {self.saved_year_value} (from first row of year column)",
+                            "INFO",
+                        )
+                    else:
+                        self._log(
+                            "      WARNING: Year column exists but first row is empty or null",
+                            "WARNING",
+                        )
+                else:
+                    self._log(
+                        "      WARNING: Cannot save year value - year column not found or table is empty",
+                        "WARNING",
+                    )
+
             # Apply calculated columns AFTER renaming
             calculated_columns = table_config.get("calculated_columns")
             if calculated_columns:
@@ -939,6 +963,35 @@ class ExcelProcessingService:
             else:
                 self._log(
                     "      Cannot add date column: no report_date found in key_values",
+                    "WARNING",
+                )
+
+        # Add data year using saved year value from source table
+        if table_config.get("add_data_year", False):
+            if self.saved_year_value:
+                try:
+                    # Validate year format (should be 4 digits)
+                    if (
+                        len(self.saved_year_value) == 4
+                        and self.saved_year_value.isdigit()
+                    ):
+                        processed_table["year"] = [self.saved_year_value] * len(
+                            processed_table
+                        )
+                        self._log(
+                            f"      Added year column: {self.saved_year_value} (from saved year value)",
+                            "INFO",
+                        )
+                    else:
+                        self._log(
+                            f"      Invalid saved year format: {self.saved_year_value} (expected 4-digit year)",
+                            "WARNING",
+                        )
+                except Exception as e:
+                    self._log(f"      Failed to add year column: {str(e)}", "WARNING")
+            else:
+                self._log(
+                    "      Cannot add year column: no saved year value found (ensure save_year_value is configured on source table)",
                     "WARNING",
                 )
 

@@ -143,6 +143,16 @@ DATABASE INTEGRATION:
 - Data types are automatically inferred from Excel data
 - Calculated columns are computed and added to the database table
 
+DYNAMIC DATA EXTRACTION:
+- "save_year_value": Boolean - Extract year from first row of 'year' column and store for reuse
+- "add_data_year": Boolean - Add saved year value to all rows of the current table
+- "add_data_date": Boolean - Add date value from key_values to all rows of the current table
+
+These flags enable dynamic data sharing between tables within the same file:
+- Use save_year_value on a source table to extract and store a year value
+- Use add_data_year on target tables to apply the saved year value
+- Use add_data_date to add date values from key_values extraction
+
 EXAMPLE CONFIGURATION:
 ---------------------
 {
@@ -167,6 +177,7 @@ EXAMPLE CONFIGURATION:
                     "primary_keys": ["report_date", "category"],
                     "table_name": "monthly_summary",
                     "headers": ["category", "value", "percentage"],
+                    "add_data_date": True,
                     "calculated_columns": [
                         {
                             "name": "last_updated",
@@ -175,6 +186,26 @@ EXAMPLE CONFIGURATION:
                             "placement": "all_rows"
                         }
                     ]
+                }
+            ],
+            "no_title_tables": [
+                {
+                    "title": "Year Source Table",
+                    "type": "concatenate_tables",
+                    "export_to_db": True,
+                    "table_name": "year_source",
+                    "save_year_value": True,
+                    "primary_keys": ["year", "month"],
+                    "headers": ["year", "month", "data"]
+                },
+                {
+                    "title": "Analysis Table",
+                    "type": "multi_concatenate_tables",
+                    "export_to_db": True,
+                    "table_name": "analysis",
+                    "add_data_year": True,
+                    "primary_keys": ["year", "month"],
+                    "headers": ["month", "value1", "value2"]
                 }
             ]
         }
@@ -349,7 +380,7 @@ FILE_CONFIG = {
                     "add_to_table": False,
                 },
             ],
-            "tables": [  # Add col_count value if 2 tables are next to each other
+            "tables": [  # Configure col_count for adjacent tables
                 {
                     "title": 'טבלה מסכמת ק"מ',
                     "add_keys": True,
@@ -514,7 +545,7 @@ FILE_CONFIG = {
                     "format": "%d/%m/%Y",
                 }
             ],
-            "tables": [],  # Add col_count value if 2 tables are next to each other
+            "tables": [],  # Configure col_count for adjacent tables
             "no_title_tables": [
                 {
                     "title": "Real-Time Task Status – YIT",
@@ -570,7 +601,7 @@ FILE_CONFIG = {
                     "add_days": 1,
                 }
             ],
-            "tables": [],  # Add col_count value if 2 tables are next to each other
+            "tables": [],  # Configure col_count for adjacent tables
             "no_title_tables": [
                 {
                     "title": "Real-Time Task Status – YIT",
@@ -635,7 +666,7 @@ FILE_CONFIG = {
                     "add_to_table": True,
                 },  # 0-based index
             ],
-            "tables": [],  # Add col_count value if 2 tables are next to each other
+            "tables": [],  # Configure col_count for adjacent tables
             "no_title_tables": [
                 {
                     "title": "commercial_speed_during_rush_hour",
@@ -650,7 +681,7 @@ FILE_CONFIG = {
     "מהירות מסחרית הסכם משרד התחבורה": {
         'מהירות מסחרית הסכם משה"ת': {  # Sheet name
             "key_values": [],
-            "tables": [],  # Add col_count value if 2 tables are next to each other
+            "tables": [],  # Configure col_count for adjacent tables
             "no_title_tables": [
                 {
                     "title": "commercial_speed_ministry_of_transportation_agreement",
@@ -970,6 +1001,7 @@ FILE_CONFIG = {
                     "type": "concatenate_tables",
                     "export_to_db": True,
                     "table_name": "validation",
+                    "save_year_value": True,
                     "primary_keys": [
                         "year",
                         "month",
@@ -1038,6 +1070,7 @@ FILE_CONFIG = {
                     "csv_filename": "km_and_energy_analysis.csv",
                     "table_name": "km_and_energy_analysis",
                     "add_keys": True,
+                    "add_data_year": True,
                     "primary_keys": ["year", "month"],
                     "headers": [
                         "month",

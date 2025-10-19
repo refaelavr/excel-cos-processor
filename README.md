@@ -195,6 +195,46 @@ FILE_CONFIG = {
 - Data type inference from Excel content
 - Conflict resolution and update strategies
 
+#### Dynamic Data Extraction
+
+The system supports dynamic data sharing between tables within the same Excel file:
+
+#### Year Value Sharing
+
+- `save_year_value`: Extract year from first row of 'year' column and store for reuse
+- `add_data_year`: Add saved year value to all rows of the current table
+
+#### Date Value Sharing
+
+- `add_data_date`: Add date value from key_values extraction to all rows
+
+#### Usage Pattern
+
+```python
+{
+    "Source Sheet": {
+        "no_title_tables": [
+            {
+                "title": "source_table",
+                "save_year_value": True,  # Extract and store year
+                "headers": ["year", "month", "data"]
+            }
+        ]
+    },
+    "Target Sheet": {
+        "no_title_tables": [
+            {
+                "title": "target_table",
+                "add_data_year": True,    # Use saved year value
+                "headers": ["month", "value"]
+            }
+        ]
+    }
+}
+```
+
+This enables consistent year/date values across multiple tables without hardcoding cell references.
+
 For detailed configuration examples and complete documentation, see the comments in `config/file_config.py`.
 
 #### Adding New File Configurations
