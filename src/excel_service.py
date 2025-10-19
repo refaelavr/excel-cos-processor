@@ -407,6 +407,10 @@ class ExcelProcessingService:
         """Process a single Excel file using intelligent filename mapping"""
         file_name = os.path.basename(file_path)
 
+        # Reset saved_year_value for each new file to prevent cross-file contamination
+        # This ensures year values are only shared within a single file, not across files
+        self.saved_year_value = None
+
         self._log(f"\nProcessing File: {file_name}", "INFO")
 
         # Get configuration key using intelligent pattern matching
@@ -898,7 +902,16 @@ class ExcelProcessingService:
                 if "year" in processed_table.columns and len(processed_table) > 0:
                     year_value = processed_table["year"].iloc[0]
                     if year_value is not None and not pd.isna(year_value):
-                        self.saved_year_value = str(year_value).strip()
+                        # Handle Excel float years (e.g., 2024.0) by converting to integer first
+                        try:
+                            # Convert to float first to handle string representations of floats
+                            year_float = float(year_value)
+                            # Convert to integer to remove decimal places, then to string
+                            self.saved_year_value = str(int(year_float))
+                        except (ValueError, TypeError):
+                            # Fallback to original string conversion if conversion fails
+                            self.saved_year_value = str(year_value).strip()
+
                         self._log(
                             f"      Saved year value: {self.saved_year_value} (from first row of year column)",
                             "INFO",
@@ -971,6 +984,7 @@ class ExcelProcessingService:
             if self.saved_year_value:
                 try:
                     # Validate year format (should be 4 digits)
+                    # Since we now convert floats to integers during saving, this should work correctly
                     if (
                         len(self.saved_year_value) == 4
                         and self.saved_year_value.isdigit()
@@ -1236,7 +1250,7 @@ class ExcelProcessingService:
         return self.processing_stats.copy()
 
     def reset_stats(self):
-        """Reset processing statistics"""
+        """Reset processing statistics and state"""
         self.processing_stats = {
             "files_processed": 0,
             "tables_extracted": 0,
@@ -1244,3 +1258,6 @@ class ExcelProcessingService:
             "errors": 0,
         }
         self.processed_files = []
+        self.saved_year_value = (
+            None  # Reset year value to prevent cross-file contamination
+        )
