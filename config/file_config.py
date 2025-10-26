@@ -580,7 +580,7 @@ FILE_CONFIG = {
                         {
                             "name": "last_updated",
                             "type": "current_date",
-                            "format": "%d/%m/%Y",
+                            "format": "%Y-%m-%d %H:%M:%S",
                             "placement": "all_rows",
                         },
                     ],
@@ -636,7 +636,7 @@ FILE_CONFIG = {
                         {
                             "name": "last_updated",
                             "type": "current_date",
-                            "format": "%d/%m/%Y",
+                            "format": "%Y-%m-%d %H:%M:%S",
                             "placement": "all_rows",
                         },
                     ],
