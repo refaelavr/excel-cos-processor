@@ -732,6 +732,14 @@ FILE_CONFIG = {
                         "slot",
                         "speed",
                     ],
+                    "calculated_columns": [
+                        {
+                            "name": "direction",
+                            "type": "custom_formula",
+                            "formula": "direction.map({'1': 'הלוך', '2': 'חזור'})",
+                            "description": "Map direction numbers to Hebrew text: 1=הלוך, 2=חזור",
+                        },
+                    ],
                 }
             ],
         },
@@ -979,6 +987,12 @@ FILE_CONFIG = {
                             "type": "custom_formula",
                             "formula": "first_name + ' ' + last_name",
                             "description": "Combined first name and last name",
+                        },
+                        {
+                            "name": "status",
+                            "type": "custom_formula",
+                            "formula": "status.str.replace(r'\\s*\\*$', '', regex=True)",
+                            "description": "Remove asterisk (*) from end of status values",
                         },
                         {
                             "name": "last_updated",
