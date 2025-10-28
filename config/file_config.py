@@ -1028,14 +1028,14 @@ FILE_CONFIG = {
                         "total_validation",
                         "per_regular_validation",
                         "per_app_validation",
-                        "comulative_change_per",
+                        "cumulative_change_per",
                     ],
                     "concatenate_config": {
                         "first_table": {
                             "start_row": 5,  # Row 6 in Excel (0-based indexing)
                             "select_columns": ["שינוי באחוזים מצטבר"],
                             "rename_columns": {
-                                "שינוי באחוזים מצטבר": "comulative_change_per"
+                                "שינוי באחוזים מצטבר": "cumulative_change_per"
                             },
                             "skip_first_row": True,  # Skip the total row
                         },
